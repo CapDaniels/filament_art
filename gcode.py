@@ -3,6 +3,7 @@ import numpy.typing as npt
 from abc import ABC, abstractmethod
 from collections.abc import MutableSequence
 import pathlib
+import contours
 
 
 def L2_norm(v1:npt.NDArray, v2:npt.NDArray):
@@ -158,6 +159,23 @@ def GString(thickness:float, x: float | None = None,y: float | None = None, z_ho
     GThinStretch(thickness, x=x, y=y)
     G1(z=z_base)
 
+def GFollowContour(contour: contours.Contour, s1:float, s2:float, stepsize=0.0025):
+    if s1 < s2:
+        s_dist = s2 - s1
+        if s_dist > 0.5:
+            stepsize = - stepsize
+            s1 +=1
+    else:
+        s_dist = s1 - s2
+        stepsize = - stepsize
+        if s_dist > 0.5:
+            stepsize = - stepsize
+            s2 +=1
+    s_vals = np.append(np.arange(s1, s2, step=stepsize), [s2] ) % 1
+    xs, ys = contour.get_coordinates(s_vals)
+    for x, y in zip(xs, ys):
+        G1(x=x, y=y)
+
 
 if __name__ == "__main__":
     gsketch = GSketch("test_main", nozzle_diameter=0.4, filament_diameter=1.75)
@@ -169,4 +187,11 @@ if __name__ == "__main__":
 
     target_test_gcode = "G1 X5.000 Y5.000 Z5.000 E0.03845"
     assert gcode_str == target_test_gcode
+    print(gsketch.get_GCode())
+
+    circle = contours.Circle((0,0), 10)
+    GFollowContour(circle, 0.5, 0.25)
+    # print(GFollowContour(circle, 0.25, 0.5))
+    # print(GFollowContour(circle, 0.25, 0.99))
+    # print(GFollowContour(circle, 0.99, 0.25))
     print(gsketch.get_GCode())

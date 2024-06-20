@@ -3,9 +3,8 @@
 import numpy as np
 import numpy.typing as npt
 from contours import Contour, Circle
-import skimage.draw as draw
 import skimage.transform as transform
-from iminuit import Minuit
+# from iminuit import Minuit
 from line_alg import wu_line
 from numba import njit
 import matplotlib.pyplot as plt
@@ -13,20 +12,13 @@ import matplotlib.widgets as widgets
 import itertools
 import cProfile
 import pstats
-from multiprocessing import Pool
 
-# from skopt import gp_minimize
-# from skopt.plots import plot_convergence
-from scipy.optimize import basinhopping
 
 img_type = npt.NDArray[np.uint8]
 
 
-# vline_aa = np.vectorize(draw.line_aa)
-
-
 @njit
-def darkness_along_line_aa_njit(target, x1, y1, x2, y2, thickness):
+def darkness_along_line_aa_njit(target, x1, y1, x2, y2, thickness, img_weights=None):
     """
     Calculate the average darkness along a line in the target image.
 
@@ -53,10 +45,22 @@ def darkness_along_line_aa_njit(target, x1, y1, x2, y2, thickness):
 
     # Extract pixel values along the line from both images
     mean_darkness = 0.0
-    for x, y, val in zip(line_x, line_y, val_aa):
-        mean_darkness += target[x, y] * val
+    weigths = val_aa
+    if img_weights is not None:
+        weights_sum = 0
+        for idx, (x, y) in enumerate(zip(line_x, line_y)):
+            w = img_weights[x, y]
+            weights_sum += w
+            weigths[idx] *= w
+        if weights_sum == 0:
+            # otherwise we would divide by zero
+            return np.inf
 
-    return mean_darkness / sum(val_aa)
+        weigths *= img_weights
+    for x, y, w in zip(line_x, line_y, weigths):
+        mean_darkness += target[x, y] * w
+
+    return mean_darkness / sum(weigths)
 
 
 class Solver:
@@ -93,6 +97,7 @@ class Solver:
         self,
         contour: "Contour",
         img: img_type,
+        img_weights: img_type | None = None,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
@@ -154,6 +159,34 @@ class Solver:
             self._border_padding,
             cv2.BORDER_REFLECT,
         )
+        if img_weights is not None:
+            img_weights = cv2.cvtColor(img_weights, cv2.COLOR_BGR2GRAY)
+            self.img_weights = np.asarray(img_weights, dtype=np.float32) / 255
+            imgw_height, imgw_width = img_weights.shape
+            if (img_height != imgw_height) or (img_width != imgw_width):
+                raise ValueError("Image and weight image must have the same size!")
+            img_weights = transform.resize(
+                img_weights,
+                (
+                    round(img_height * self.img_scale_factor + 1),
+                    round(img_width * self.img_scale_factor + 1),
+                ),
+                anti_aliasing=True,
+            )
+            self._img_weights = np.asarray(
+                img_weights, dtype=np.float32
+            )  # internal working copy that is rescaled and will be modified
+            self._img_weights = cv2.copyMakeBorder(
+                self._img_weights,
+                self._border_padding,
+                self._border_padding,
+                self._border_padding,
+                self._border_padding,
+                cv2.BORDER_REFLECT,
+            )
+        else:
+            self.img_weights = None
+            self._img_weights = None
         self._img_line_count = self._img.copy()
         self.string_count = 0
         self.n_points = n_points
@@ -161,7 +194,6 @@ class Solver:
         self.xy_points = np.array([self._get_coordinates(s) for s in self.s_vals])
         self.curr_sidx = None
         self._solved_first = False
-
 
     def _get_coordinates(self, s1):
         # getting the shifted corrdinates, so that the min is [0, 0]
@@ -186,7 +218,6 @@ class Solver:
         if diff > 0.1:
             return 0.0
         return ((0.1 - diff) * 10)**2
-
 
     def _build_target_function(self):
         """
@@ -213,7 +244,7 @@ class Solver:
                     # squared increase from 0 to 1 for values of abs(s2-s1)<0.1
                     error = (
                         darkness_along_line_aa_njit(
-                            self._img, xy1[0], xy1[1], xy2[0], xy2[1], self._line_thickness
+                            self._img, xy1[0], xy1[1], xy2[0], xy2[1], self._line_thickness, self._img_weights
                         )
                     )
                     return error
@@ -233,7 +264,7 @@ class Solver:
                 raise NotImplementedError(
                     f"starting values for mode `{self.mode}` not implemented!"
                 )
-    
+
     def solve_next(self):
         if not self._solved_first:
             return self._solve_first()
@@ -311,11 +342,13 @@ class Solver:
         img[x, y] = new_px_vals
         return img
 
+
 class SolverGUI(Solver):
     def __init__(
         self,
         contour: "Contour",
         img: img_type,
+        img_weights: img_type | None = None,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
@@ -325,6 +358,7 @@ class SolverGUI(Solver):
         super().__init__(
             contour=contour,
             img=img,
+            img_weights=img_weights,
             mode=mode,
             dpmm=dpmm,
             line_thickness=line_thickness,
@@ -347,30 +381,37 @@ class SolverGUI(Solver):
         self.mpl_img_canvas = self.axs[1, 0].imshow(
             self._img_canvas, cmap="gray", vmin=0, vmax=1
         )
+        if self._img_weights is not None:
+            self.axs[1, 1].imshow(
+                self._img * self._img_weights, cmap="gray"
+            )
 
         # Adjust layout to make room for the button
         self.fig.subplots_adjust(bottom=0.2)
 
         # Create a button below the subplots
-        button_labels = ["1", "10", "100", "1000"]
+        button_labels = ["1", "100", "500", "1000"]
         self._buttons = []
         for i, label in enumerate(button_labels):
             ax_button = plt.axes(
                 [0.1 + i * 0.2, 0.05, 0.15, 0.05]
             )  # [left, bottom, width, height]
             button = widgets.Button(ax_button, label)
-            button.on_clicked(self._next_line_GUI_call)
+            button.on_clicked(self._next_lines_GUI_call)
             button.ax.set_label(label)
             self._buttons.append(button)
 
     def start_gui(self):
         plt.show(block=True)
 
-    def _next_line_GUI_call(self, event):
-        n_calls = int(event.inaxes.get_label())
-        for i in range(n_calls):
+    def solve_n_lines(self, n=1):
+        for i in range(n):
             s1, s2 = self.solve_next()
             self.update_img_canvas(s1, s2)
+
+    def _next_lines_GUI_call(self, event):
+        n_calls = int(event.inaxes.get_label())
+        self.solve_n_lines(n_calls)
 
     def update_img_canvas(self, s1, s2):
         self._img_canvas = self.draw_line(
@@ -387,8 +428,11 @@ if __name__ == "__main__":
 
     circle = Circle((0, 0), 100)
     img = cv2.imread(
-        r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\11.jpg"
+        r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\4.jpg"
     )
+    # img_weights = cv2.imread(
+    #     r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\11_mask.jpg"
+    # )
     solver = SolverGUI(circle, img, line_thickness=0.2, dpmm=10.0, n_points=500)
     solver.start_gui()
     # solver.solve_next()
