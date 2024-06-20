@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import numpy.typing as npt
+from typing import Annotated, TypeVar, Literal
+
+DType = TypeVar("DType", bound=np.generic)
 
 
 class Contour(ABC):
@@ -14,7 +17,7 @@ class Contour(ABC):
         return self._get_coordinates(s, do_pos_shift)
 
     @abstractmethod
-    def _get_coordinates(self, s, do_pos_shift):
+    def _get_coordinates(self, s, do_pos_shift) -> Annotated[npt.NDArray[DType], Literal[2, 'N']] | Annotated[npt.NDArray[DType], Literal[2]]:
         pass
 
     @abstractmethod

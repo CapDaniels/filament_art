@@ -10,11 +10,12 @@ from numba import njit
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
 import itertools
+import cv2
 import cProfile
 import pstats
 
 
-img_type = npt.NDArray[np.uint8]
+img_type = cv2.typing.MatLike
 
 
 @njit
@@ -194,6 +195,7 @@ class Solver:
         self.xy_points = np.array([self._get_coordinates(s) for s in self.s_vals])
         self.curr_sidx = None
         self._solved_first = False
+        self.s_connections = []
 
     def _get_coordinates(self, s1):
         # getting the shifted corrdinates, so that the min is [0, 0]
@@ -285,6 +287,7 @@ class Solver:
         old_sidx = self.curr_sidx
         self.curr_sidx = best_sidx
         # pass both for potential future updates
+        self.s_connections.append(self.s_vals[self.curr_sidx])
         return old_sidx, best_sidx
 
     def _solve_first(self):
@@ -309,6 +312,8 @@ class Solver:
         self._update_img(*best_sidxs, opacity=self.opacity)
         self.curr_sidx = best_sidxs[1]
         self._solved_first = True
+        self.s_connections.append(self.s_vals[best_sidxs[0]])
+        self.s_connections.append(self.s_vals[best_sidxs[1]])
         return *best_sidxs,
 
     def _update_img(self, sidx1, sidx2, opacity=None):
@@ -424,17 +429,16 @@ class SolverGUI(Solver):
 
 
 if __name__ == "__main__":
-    import cv2
-
     circle = Circle((0, 0), 100)
     img = cv2.imread(
-        r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\4.jpg"
+        r".\..\string_art\test_images\4.jpg"
     )
     # img_weights = cv2.imread(
     #     r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\11_mask.jpg"
     # )
     solver = SolverGUI(circle, img, line_thickness=0.2, dpmm=10.0, n_points=500)
     solver.start_gui()
+    print(solver.s_connections)
     # solver.solve_next()
     # cProfile.run("solver.solve_next()", 'restats')
     # p = pstats.Stats('restats')

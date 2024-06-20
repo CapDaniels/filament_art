@@ -6,14 +6,14 @@ import pathlib
 import contours
 
 
-def L2_norm(v1:npt.NDArray, v2:npt.NDArray):
-    return np.sqrt(np.mean(np.square(v2 - v1),axis = -1))
+def L2_norm(v1: npt.NDArray, v2: npt.NDArray):
+    return np.sqrt(np.mean(np.square(v2 - v1), axis=-1))
 
 
 class GSketch(MutableSequence):
     _current_gsketch = None
 
-    def __init__(self, name: str, nozzle_diameter = 0.4, filament_diameter = 1.75):
+    def __init__(self, name: str, nozzle_diameter=0.4, filament_diameter=1.75):
         if not name.isidentifier():
             raise ValueError(
                 "Invalid name. Names should follow the same rules as python variables!"
@@ -28,11 +28,14 @@ class GSketch(MutableSequence):
         if not isinstance(gcode, GCode):
             raise ValueError("Can only apped objects that derive from GCode!")
 
-    def __len__(self): return len(self.list)
+    def __len__(self):
+        return len(self.list)
 
-    def __getitem__(self, i): return self.list[i]
+    def __getitem__(self, i):
+        return self.list[i]
 
-    def __delitem__(self, i): del self.list[i]
+    def __delitem__(self, i):
+        del self.list[i]
 
     def __setitem__(self, i, gcode: "GCode"):
         self.check(gcode)
@@ -41,36 +44,36 @@ class GSketch(MutableSequence):
     def insert(self, i, gcode: "GCode"):
         self.check(gcode)
         self.list.insert(i, gcode)
-    
+
     @property
     def extruder_ratio(self):
-        return (self.filament_diameter/self.nozzle_diameter)**2
+        return (self.filament_diameter / self.nozzle_diameter) ** 2
 
     def get_curr_pos(self, var_names: list[str] | None = None) -> list[float | None]:
         if var_names is None:
             var_names = ["X", "Y", "Z"]
         var_names = [var_name.upper() for var_name in var_names]
-        vars = [None]*len(var_names)
+        vars = [None] * len(var_names)
 
         for code in self.list[::-1]:
             command_attr = code.command_attr
-            for idx, var_name in enumerate(var_names): 
-                vars[idx] = vars[idx] or command_attr.get(var_name, vars[idx])  # only overwrite var with value if var is not None and var_name is in command_attr.keys()
+            for idx, var_name in enumerate(var_names):
+                vars[idx] = vars[idx] or command_attr.get(
+                    var_name, vars[idx]
+                )  # only overwrite var with value if var is not None and var_name is in command_attr.keys()
             if not (None in vars):
                 break
 
         return vars
-    
+
     def get_GCode(self) -> str:
         gout = [code_obj.getGstring() for code_obj in self.list]
         gout = "\n".join(gout)
         return gout + "\n"
-    
-    def save_GCode(self, path:str | pathlib.PurePath):
+
+    def save_GCode(self, path: str | pathlib.PurePath):
         with open(path, "w") as f:
             f.writelines(self.get_GCode())
-
-
 
 
 class GCode(ABC):
@@ -99,7 +102,9 @@ class GCode(ABC):
         pass
 
     def __repr__(self) -> str:
-        return f"Gcode command: {self.command_name}, Gcode Attributes: {self.command_attr}"
+        return (
+            f"Gcode command: {self.command_name}, Gcode Attributes: {self.command_attr}"
+        )
 
 
 class G1(GCode):
@@ -125,7 +130,7 @@ class G1(GCode):
     @property
     def command_attr(self):
         return self._command_attr
-    
+
 
 class GThinStretch(G1):
     def __init__(self, thickness, x=None, y=None, z=None, f=None):
@@ -136,9 +141,11 @@ class GThinStretch(G1):
 
         if not (x or y or z):
             raise ValueError("You need to define at least any of x, y or z!")
-        
-        if thickness > 2* gsketch.nozzle_diameter:
-            raise ValueError("Strings should not be wider than 2 times the nozzle diameter!")
+
+        if thickness > 2 * gsketch.nozzle_diameter:
+            raise ValueError(
+                "Strings should not be wider than 2 times the nozzle diameter!"
+            )
 
         pos_old = np.array(gsketch.get_curr_pos())
         x_new = x or pos_old[0]
@@ -148,30 +155,33 @@ class GThinStretch(G1):
         dist = L2_norm(pos_old, pos_new)
 
         # distance times the fraction of target area and filament cross section area  (shortend some terms)
-        e = dist * (thickness / gsketch.filament_diameter)**2
+        e = dist * (thickness / gsketch.filament_diameter) ** 2
 
         super().__init__(x=x_new, y=y_new, z=z_new, e=e)
 
 
-def GString(thickness:float, x: float | None = None,y: float | None = None, z_hop=0.4):
+def GString(
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4
+):
     z_base = GSketch._current_gsketch.get_curr_pos(["Z"])[0]
-    G1(z=z_base+z_hop)
+    G1(z=z_base + z_hop)
     GThinStretch(thickness, x=x, y=y)
     G1(z=z_base)
 
-def GFollowContour(contour: contours.Contour, s1:float, s2:float, stepsize=0.0025):
+
+def GFollowContour(contour: contours.Contour, s1: float, s2: float, stepsize=0.0025):
     if s1 < s2:
         s_dist = s2 - s1
         if s_dist > 0.5:
-            stepsize = - stepsize
-            s1 +=1
+            stepsize = -stepsize
+            s1 += 1
     else:
         s_dist = s1 - s2
-        stepsize = - stepsize
+        stepsize = -stepsize
         if s_dist > 0.5:
-            stepsize = - stepsize
-            s2 +=1
-    s_vals = np.append(np.arange(s1, s2, step=stepsize), [s2] ) % 1
+            stepsize = -stepsize
+            s2 += 1
+    s_vals = np.append(np.arange(s1, s2, step=stepsize), [s2]) % 1
     xs, ys = contour.get_coordinates(s_vals)
     for x, y in zip(xs, ys):
         G1(x=x, y=y)
@@ -182,14 +192,14 @@ if __name__ == "__main__":
     G1(x=3, y=2)
     G1(z=1)
     G1(x=4)
-    GThinStretch(0.2,5,5,5)
+    GThinStretch(0.2, 5, 5, 5)
     gcode_str = gsketch[-1].getGstring()
 
     target_test_gcode = "G1 X5.000 Y5.000 Z5.000 E0.03845"
     assert gcode_str == target_test_gcode
     print(gsketch.get_GCode())
 
-    circle = contours.Circle((0,0), 10)
+    circle = contours.Circle((0, 0), 10)
     GFollowContour(circle, 0.5, 0.25)
     # print(GFollowContour(circle, 0.25, 0.5))
     # print(GFollowContour(circle, 0.25, 0.99))
