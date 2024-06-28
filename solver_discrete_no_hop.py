@@ -13,6 +13,9 @@ import itertools
 import cv2
 import cProfile
 import pstats
+from gcode import GSketch
+from gcode_builder import GcodeStringer
+import warnings
 
 
 img_type = cv2.typing.MatLike
@@ -42,11 +45,10 @@ def darkness_along_line_aa_njit(target, x1, y1, x2, y2, thickness, img_weights=N
         The average darkness along the line.
     """
     # modifies Wu's algorithm to get the coordinates of the line
-    line_x, line_y, val_aa = wu_line(x1, y1, x2, y2, thickness)
+    line_x, line_y, weigths = wu_line(x1, y1, x2, y2, thickness)
 
     # Extract pixel values along the line from both images
     mean_darkness = 0.0
-    weigths = val_aa
     if img_weights is not None:
         weights_sum = 0
         for idx, (x, y) in enumerate(zip(line_x, line_y)):
@@ -57,7 +59,7 @@ def darkness_along_line_aa_njit(target, x1, y1, x2, y2, thickness, img_weights=N
             # otherwise we would divide by zero
             return np.inf
 
-        weigths *= img_weights
+        # weigths *= img_weights
     for x, y, w in zip(line_x, line_y, weigths):
         mean_darkness += target[x, y] * w
 
@@ -128,7 +130,8 @@ class Solver:
         self.opacity = (
             opacity  # only used in drawing, but not in finding the best move
         )
-        self.overlap_handling = "kink"  # tunining variable without user accsess
+        self.overlap_handling = "kink"  # internal solver setting without user accsess
+        self.kink_factor = 0.2  # internal solver setting without user accsess
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.img = np.asarray(img, dtype=np.float32) / 255
         contour_dx, contour_dy = self.contour.get_extension()  # in mm
@@ -146,11 +149,14 @@ class Solver:
                 round(img_width * self.img_scale_factor + 1),
             ),
             anti_aliasing=True,
-        )
+        ) # type: ignore
         self._img = np.asarray(
             img, dtype=np.float32
         )  # internal working copy that is rescaled and will be modified
+        # line thickness in dots for internal use
         self._line_thickness = line_thickness * dpmm
+        if self._line_thickness < 1.0:
+            warnings.warn(f"Your DPI is low for the selected thickness. A value above {1/line_thickness:.2f} is adviced.")
         self._border_padding = int(np.ceil(self._line_thickness / 2)) + 1
         self._img = cv2.copyMakeBorder(
             self._img,
@@ -173,7 +179,7 @@ class Solver:
                     round(img_width * self.img_scale_factor + 1),
                 ),
                 anti_aliasing=True,
-            )
+            ) # type: ignore
             self._img_weights = np.asarray(
                 img_weights, dtype=np.float32
             )  # internal working copy that is rescaled and will be modified
@@ -332,7 +338,7 @@ class Solver:
                 self._img[x, y] = new_px_vals
             case "kink":
                 def func(x):
-                    return np.where(x < 1.0, x , 0.8 + x * 0.2)
+                    return np.where(x < 1.0, x , (1 - self.kink_factor) + x * self.kink_factor)
                 self._img_line_count[x, y] += add_px_vals
                 self._img[x, y] = func(self._img_line_count[x, y])
 
@@ -399,7 +405,7 @@ class SolverGUI(Solver):
         self._buttons = []
         for i, label in enumerate(button_labels):
             ax_button = plt.axes(
-                [0.1 + i * 0.2, 0.05, 0.15, 0.05]
+                (0.1 + i * 0.2, 0.05, 0.15, 0.05)
             )  # [left, bottom, width, height]
             button = widgets.Button(ax_button, label)
             button.on_clicked(self._next_lines_GUI_call)
@@ -431,12 +437,12 @@ class SolverGUI(Solver):
 if __name__ == "__main__":
     circle = Circle((0, 0), 100)
     img = cv2.imread(
-        r".\..\string_art\test_images\4.jpg"
+        r".\..\string_art\test_images\11.jpg"
     )
-    # img_weights = cv2.imread(
-    #     r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\11_mask.jpg"
-    # )
-    solver = SolverGUI(circle, img, line_thickness=0.2, dpmm=10.0, n_points=500)
+    img_weights = cv2.imread(
+        r".\..\string_art\test_images\11_mask.jpg"
+    )
+    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=0.2, dpmm=5.0, n_points=500)
     solver.start_gui()
     print(solver.s_connections)
     # solver.solve_next()
@@ -445,3 +451,9 @@ if __name__ == "__main__":
     # # p.strip_dirs().sort_stats(-1).print_stats()
     # p.sort_stats('cumulative').print_stats(100)
     # p.print_stats()
+    gsketch = GSketch("test_main", nozzle_diameter=0.4, filament_diameter=1.75)
+    gcode_stringer = GcodeStringer(solver, gsketch)
+    gcode_stringer.process_Gcode()
+    print(gsketch.get_GCode())
+
+

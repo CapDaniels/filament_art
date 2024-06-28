@@ -53,18 +53,17 @@ class GSketch(MutableSequence):
         if var_names is None:
             var_names = ["X", "Y", "Z"]
         var_names = [var_name.upper() for var_name in var_names]
-        vars = [None] * len(var_names)
+        values = [None] * len(var_names)
 
         for code in self.list[::-1]:
             command_attr = code.command_attr
             for idx, var_name in enumerate(var_names):
-                vars[idx] = vars[idx] or command_attr.get(
-                    var_name, vars[idx]
-                )  # only overwrite var with value if var is not None and var_name is in command_attr.keys()
-            if not (None in vars):
+                # only overwrite var with value if var is None and var_name is in command_attr.keys()
+                if values[idx] is None:
+                    values[idx] = command_attr.get(var_name, None)  
+            if not (None in values):
                 break
-
-        return vars
+        return values
 
     def get_GCode(self) -> str:
         gout = [code_obj.getGstring() for code_obj in self.list]
@@ -161,10 +160,13 @@ class GThinStretch(G1):
 
 
 def GString(
-    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True
 ):
     z_base = GSketch._current_gsketch.get_curr_pos(["Z"])[0]
-    G1(z=z_base + z_hop)
+    if extrude_at_lift:
+       GThinStretch(thickness, z=z_base + z_hop)
+    else:
+        G1(z=z_base + z_hop)
     GThinStretch(thickness, x=x, y=y)
     G1(z=z_base)
 
