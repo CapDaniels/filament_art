@@ -131,7 +131,7 @@ class Solver:
             opacity  # only used in drawing, but not in finding the best move
         )
         self.overlap_handling = "kink"  # internal solver setting without user accsess
-        self.kink_factor = 0.2  # internal solver setting without user accsess
+        self.kink_factor = 0.1  # internal solver setting without user accsess
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.img = np.asarray(img, dtype=np.float32) / 255
         contour_dx, contour_dy = self.contour.get_extension()  # in mm
@@ -202,6 +202,8 @@ class Solver:
         self.curr_sidx = None
         self._solved_first = False
         self.s_connections = []
+        self._img_canvas = np.ones(self._img.shape)  # to draw the resulting image
+
 
     def _get_coordinates(self, s1):
         # getting the shifted corrdinates, so that the min is [0, 0]
@@ -294,6 +296,7 @@ class Solver:
         self.curr_sidx = best_sidx
         # pass both for potential future updates
         self.s_connections.append(self.s_vals[self.curr_sidx])
+        self.update_img_canvas(old_sidx, self.curr_sidx)
         return old_sidx, best_sidx
 
     def _solve_first(self):
@@ -320,6 +323,7 @@ class Solver:
         self._solved_first = True
         self.s_connections.append(self.s_vals[best_sidxs[0]])
         self.s_connections.append(self.s_vals[best_sidxs[1]])
+        self.update_img_canvas(*best_sidxs,)
         return *best_sidxs,
 
     def _update_img(self, sidx1, sidx2, opacity=None):
@@ -352,6 +356,15 @@ class Solver:
             new_px_vals = np.clip(new_px_vals, 0.0, 1.0)
         img[x, y] = new_px_vals
         return img
+    
+    def update_img_canvas(self, s1, s2):
+        self._img_canvas = self.draw_line(
+            s1, s2, self._img_canvas, -self.opacity
+        )
+    
+    @property
+    def image(self):
+        return np.clip(np.rint(self._img_canvas*255).astype(int), 0, 255)
 
 
 class SolverGUI(Solver):
@@ -377,7 +390,6 @@ class SolverGUI(Solver):
             n_points=n_points
         )
         # 1 = black
-        self._img_canvas = np.ones(self._img.shape)
         # Create figure and subplots
         # plt.ion()
         self.fig, self.axs = plt.subplots(2, 2, figsize=(10, 8))
@@ -417,17 +429,14 @@ class SolverGUI(Solver):
 
     def solve_n_lines(self, n=1):
         for i in range(n):
-            s1, s2 = self.solve_next()
-            self.update_img_canvas(s1, s2)
+            self.solve_next()
+            self._update_gui()
 
     def _next_lines_GUI_call(self, event):
         n_calls = int(event.inaxes.get_label())
         self.solve_n_lines(n_calls)
 
-    def update_img_canvas(self, s1, s2):
-        self._img_canvas = self.draw_line(
-            s1, s2, self._img_canvas, -self.opacity
-        )
+    def _update_gui(self):
         self.mpl_img_canvas.set_data(self._img_canvas)
         self.mpl_img.set_data(self._img)
         self.fig.canvas.draw()
@@ -437,11 +446,12 @@ class SolverGUI(Solver):
 if __name__ == "__main__":
     circle = Circle((0, 0), 100)
     img = cv2.imread(
-        r".\..\string_art\test_images\11.jpg"
+        r".\..\string_art\test_images\Snoopy_Peanuts.png"
     )
-    img_weights = cv2.imread(
-        r".\..\string_art\test_images\11_mask.jpg"
-    )
+    img_weights = None
+    # img_weights = cv2.imread(
+    #     r".\..\string_art\test_images\11_mask.jpg"
+    # )
     solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=0.2, dpmm=5.0, n_points=500)
     solver.start_gui()
     print(solver.s_connections)
