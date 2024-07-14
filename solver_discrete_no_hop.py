@@ -131,7 +131,7 @@ class Solver:
             opacity  # only used in drawing, but not in finding the best move
         )
         self.overlap_handling = "kink"  # internal solver setting without user accsess
-        self.kink_factor = 0.1  # internal solver setting without user accsess
+        self.kink_factor = 0.25  # internal solver setting without user accsess
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.img = np.asarray(img, dtype=np.float32) / 255
         contour_dx, contour_dy = self.contour.get_extension()  # in mm

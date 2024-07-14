@@ -7,7 +7,7 @@ import contours
 
 
 def L2_norm(v1: npt.NDArray, v2: npt.NDArray):
-    return np.sqrt(np.mean(np.square(v2 - v1), axis=-1))
+    return np.sqrt(np.sum(np.square(v2 - v1), axis=-1))
 
 
 class GSketch(MutableSequence):
@@ -132,6 +132,7 @@ class G1(GCode):
 
 
 class GThinStretch(G1):
+    # could be also implemented as a classmethod, but like the separation
     def __init__(self, thickness, x=None, y=None, z=None, f=None):
         gsketch = GSketch._current_gsketch
 
@@ -156,19 +157,19 @@ class GThinStretch(G1):
         # distance times the fraction of target area and filament cross section area  (shortend some terms)
         e = dist * (thickness / gsketch.filament_diameter) ** 2
 
-        super().__init__(x=x_new, y=y_new, z=z_new, e=e)
+        super().__init__(x=x_new, y=y_new, z=z_new, e=e, f=f)
 
 
 def GString(
-    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000.
 ):
     z_base = GSketch._current_gsketch.get_curr_pos(["Z"])[0]
     if extrude_at_lift:
-       GThinStretch(thickness, z=z_base + z_hop)
+       GThinStretch(thickness, z=z_base + z_hop, f=vf)
     else:
-        G1(z=z_base + z_hop)
-    GThinStretch(thickness, x=x, y=y)
-    G1(z=z_base)
+        G1(z=z_base + z_hop, f=vf)
+    GThinStretch(thickness, x=x, y=y, f=hf)
+    G1(z=z_base, f=vf)
 
 
 def GFollowContour(contour: contours.Contour, s1: float, s2: float, stepsize=0.0025):
@@ -197,9 +198,9 @@ if __name__ == "__main__":
     GThinStretch(0.2, 5, 5, 5)
     gcode_str = gsketch[-1].getGstring()
 
-    target_test_gcode = "G1 X5.000 Y5.000 Z5.000 E0.03845"
-    assert gcode_str == target_test_gcode
+    target_test_gcode = "G1 X5.000 Y5.000 Z5.000 E0.06660"
     print(gsketch.get_GCode())
+    assert gcode_str == target_test_gcode
 
     circle = contours.Circle((0, 0), 10)
     GFollowContour(circle, 0.5, 0.25)
@@ -207,3 +208,5 @@ if __name__ == "__main__":
     # print(GFollowContour(circle, 0.25, 0.99))
     # print(GFollowContour(circle, 0.99, 0.25))
     print(gsketch.get_GCode())
+
+    print(L2_norm(np.array([[1,1,0], [10,0,0]]), np.zeros((2,3))))

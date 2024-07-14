@@ -4,7 +4,7 @@ import warnings
 
 
 class GcodeStringer:
-    def __init__(self, solver: "Solver", gsketch: GSketch, thickness=0.4, z_hop=1, z_base=None, feed_rate=1000):
+    def __init__(self, solver: "Solver", gsketch: GSketch, thickness=0.4, z_hop=1., z_base=None, feed_rate=1000.):
         self.solver = solver
         self.gsketch = gsketch
         self.thickness = thickness
@@ -17,7 +17,8 @@ class GcodeStringer:
                 self.z_base = 0.0
         else:
             self.z_base = z_base
-        self.feed_rate = feed_rate
+        self.vf = 600.
+        self.hf = feed_rate
 
     def process_Gcode(self):
         s_vals = self.solver.s_connections
@@ -25,14 +26,13 @@ class GcodeStringer:
             raise AttributeError("Cannot generate GCode if solver did not run!")
         prev_gsketch = GSketch._current_gsketch
         GSketch._current_gsketch = self.gsketch
-        G1(z=self.z_base + 10, f=1000)
+        G1(z=self.z_base + 10, f=self.vf)
         x, y = self.solver.contour.get_coordinates(self.solver.s_connections[0], do_pos_shift=False)
-        G1(x=x, y=y)
-        G1(z=self.z_base)
-        G1(f=self.feed_rate)
+        G1(x=x, y=y, f=self.hf)
+        G1(z=self.z_base, f=self.vf)
         for s in self.solver.s_connections[1:]:
             xy = self.solver.contour.get_coordinates(s, do_pos_shift=False)
-            GString(self.thickness, x=xy[0], y=xy[1], z_hop=self.z_hop)
+            GString(self.thickness, x=xy[0], y=xy[1], z_hop=self.z_hop, hf=self.hf, vf=self.vf)
         GSketch._current_gsketch = prev_gsketch
 
 
