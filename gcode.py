@@ -186,6 +186,7 @@ def GString(
     # follow a diagonal ramping from connection points
 
     # TODO: change ramp_factor to angle or distance unit
+    # TODO: maybe lower feedrate on downward ramp?
 
     pos_old = np.array(GSketch.gcgs().get_curr_pos(["X", "Y"]))
     x_new = x or pos_old[0]
