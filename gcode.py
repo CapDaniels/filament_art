@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import MutableSequence
 import pathlib
 import contours
+import warnings
 
 
 def L2_norm(v1: npt.NDArray, v2: npt.NDArray):
@@ -73,6 +74,13 @@ class GSketch(MutableSequence):
     def save_GCode(self, path: str | pathlib.PurePath):
         with open(path, "w") as f:
             f.writelines(self.get_GCode())
+    
+    @classmethod
+    def gcgs(cls):
+        "Get Current GSketch"
+        if cls._current_gsketch is None:
+            raise ValueError("Getting current GSketch before GSketch is initialized!")
+        return cls._current_gsketch
 
 
 class GCode(ABC):
@@ -134,10 +142,7 @@ class G1(GCode):
 class GThinStretch(G1):
     # could be also implemented as a classmethod, but like the separation
     def __init__(self, thickness, x=None, y=None, z=None, f=None):
-        gsketch = GSketch._current_gsketch
-
-        if gsketch is None:
-            raise AttributeError("You need to initialize a GSketch first!")
+        gsketch = GSketch.gcgs()
 
         if not (x or y or z):
             raise ValueError("You need to define at least any of x, y or z!")
@@ -161,15 +166,40 @@ class GThinStretch(G1):
 
 
 def GString(
-    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000.
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000., ramp_factor=0.1
 ):
-    z_base = GSketch._current_gsketch.get_curr_pos(["Z"])[0]
-    if extrude_at_lift:
-       GThinStretch(thickness, z=z_base + z_hop, f=vf)
-    else:
-        G1(z=z_base + z_hop, f=vf)
-    GThinStretch(thickness, x=x, y=y, f=hf)
-    G1(z=z_base, f=vf)
+    if ramp_factor < 0. or ramp_factor > 1.0:
+        raise ValueError("`ramp_factor` has to be in the interval [0.0, 1.0]!")
+    z_base = GSketch.gcgs().get_curr_pos(["Z"])[0]
+    if z_base is None:
+        warnings.warn("No prior z-height found. Defaulting to 0!")
+        z_base = 0.0
+    # if not do_ramp:
+    #     if extrude_at_lift:
+    #         GThinStretch(thickness, z=z_base + z_hop, f=vf)
+    #     else:
+    #         G1(z=z_base + z_hop, f=vf)
+    #     GThinStretch(thickness, x=x, y=y, f=hf)
+    #     G1(z=z_base, f=vf)
+    # else:
+
+    # follow a diagonal ramping from connection points
+
+    # TODO: change ramp_factor to angle or distance unit
+
+    pos_old = np.array(GSketch.gcgs().get_curr_pos(["X", "Y"]))
+    x_new = x or pos_old[0]
+    y_new = y or pos_old[1]
+    pos_new = np.array([x_new, y_new])
+    def path(s):
+        return pos_old + (pos_new - pos_old) * s
+    x1, y1 = path(ramp_factor)
+    GThinStretch(thickness, x=x1, y=y1, z=z_base + z_hop, f=hf)
+    x2, y2 = path(1-ramp_factor)
+    GThinStretch(thickness, x=x2, y=y2, f=hf)
+    GThinStretch(thickness, x=x_new, y=y_new, z=z_base, f=hf)
+
+
 
 
 def GFollowContour(contour: contours.Contour, s1: float, s2: float, stepsize=0.0025):

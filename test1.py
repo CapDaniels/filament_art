@@ -17,7 +17,7 @@ if __name__ == "__main__":
     #     fr".\..\string_art\test_images\11_mask.jpg"
     # )
 
-    thickness= 0.4
+    thickness= 0.35
     solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=thickness, dpmm=5.0, n_points=500)
     # solver.start_gui()
     for i in range(500):
