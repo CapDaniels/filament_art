@@ -8,26 +8,28 @@ import numpy as np
 
 if __name__ == "__main__":
     circle = contours.Circle((110, 110), 100)
-    pic_name="Snoopy_Peanuts.png"
+    pic_name="I1.jpg"
     img = cv2.imread(
         fr".\..\string_art\test_images\{pic_name}"
     )
     img_weights = None
-    # img_weights = cv2.imread(
-    #     fr".\..\string_art\test_images\11_mask.jpg"
-    # )
+    img_weights = cv2.imread(
+        r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\I1_mask.jpg"
+    )
 
     thickness= 0.35
-    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=thickness, dpmm=5.0, n_points=500)
-    # solver.start_gui()
-    for i in range(500):
-        solver.solve_next()
+    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=thickness, dpmm=5.0, n_points=750, kink_factor=0.2)
+    solver.start_gui()
+    # for i in range(700):
+    #     solver.solve_next()
     gsketch = GSketch("test_main", nozzle_diameter=0.4, filament_diameter=1.75)
     gcode_stringer = GcodeStringer(solver, gsketch, z_hop=1, z_base=5, feed_rate=1400., thickness=thickness)
     gcode_stringer.process_Gcode()
     # print(gsketch.get_GCode())
     gsketch.save_GCode(f"./test/{pic_name}.gcode")
+    print("saved:", f"./test/{pic_name}.gcode")
     cv2.imwrite(f"./test/{pic_name}", solver.image)
+    print("saved:", f"./test/{pic_name}")
 
 
 

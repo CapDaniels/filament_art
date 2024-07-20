@@ -166,10 +166,11 @@ class GThinStretch(G1):
 
 
 def GString(
-    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000., ramp_factor=0.1
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000., ramp_angle=45
 ):
-    if ramp_factor < 0. or ramp_factor > 1.0:
-        raise ValueError("`ramp_factor` has to be in the interval [0.0, 1.0]!")
+    if (ramp_angle <= 0) or (ramp_angle > 90):
+        raise ValueError("`ramp_angle` must be in teh interval [0, 90]!")
+    ramp_angle = np.radians(ramp_angle)
     z_base = GSketch.gcgs().get_curr_pos(["Z"])[0]
     if z_base is None:
         warnings.warn("No prior z-height found. Defaulting to 0!")
@@ -194,10 +195,18 @@ def GString(
     pos_new = np.array([x_new, y_new])
     def path(s):
         return pos_old + (pos_new - pos_old) * s
-    x1, y1 = path(ramp_factor)
+    s1 = z_hop / np.tan(ramp_angle) / L2_norm(pos_new, pos_old)
+    s2 = 1 - s1
+    reached_full_height = True
+    if s1 > 0.5:
+        reached_full_height = False
+        s1, s2 = 0.5, 0.5
+        z_hop = (L2_norm(pos_new, pos_old) / 2) * np.tan(ramp_angle)
+    x1, y1 = path(s1)
     GThinStretch(thickness, x=x1, y=y1, z=z_base + z_hop, f=hf)
-    x2, y2 = path(1-ramp_factor)
-    GThinStretch(thickness, x=x2, y=y2, f=hf)
+    x2, y2 = path(s2)
+    if reached_full_height:
+        GThinStretch(thickness, x=x2, y=y2, f=hf)
     GThinStretch(thickness, x=x_new, y=y_new, z=z_base, f=hf)
 
 

@@ -106,6 +106,7 @@ class Solver:
         line_thickness=0.4,
         opacity=1.0,
         n_points=200,
+        kink_factor=0.25,
     ):
         """
         Initializes the Solver with the given shape, image, mode, and dpmm.
@@ -131,7 +132,7 @@ class Solver:
             opacity  # only used in drawing, but not in finding the best move
         )
         self.overlap_handling = "kink"  # internal solver setting without user accsess
-        self.kink_factor = 0.25  # internal solver setting without user accsess
+        self.kink_factor = kink_factor
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.img = np.asarray(img, dtype=np.float32) / 255
         contour_dx, contour_dy = self.contour.get_extension()  # in mm
@@ -377,7 +378,8 @@ class SolverGUI(Solver):
         dpmm=12.0,
         line_thickness=0.4,
         opacity=1.0,
-        n_points=200
+        n_points=200,
+        kink_factor=0.25,
     ):
         super().__init__(
             contour=contour,
@@ -387,7 +389,8 @@ class SolverGUI(Solver):
             dpmm=dpmm,
             line_thickness=line_thickness,
             opacity=opacity,
-            n_points=n_points
+            n_points=n_points,
+            kink_factor=kink_factor,
         )
         # 1 = black
         # Create figure and subplots
