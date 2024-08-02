@@ -8,17 +8,17 @@ import numpy as np
 
 if __name__ == "__main__":
     circle = contours.Circle((110, 110), 100)
-    pic_name="I1.jpg"
+    pic_name="Snoopy_Peanuts.png"
     img = cv2.imread(
         fr".\..\string_art\test_images\{pic_name}"
     )
     img_weights = None
-    img_weights = cv2.imread(
-        r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\I1_mask.jpg"
-    )
+    # img_weights = cv2.imread(
+    #     r"C:\Users\CapDaniels\Meine Ablage\Documents\CodingProjects\pythonProjects\string_art\test_images\I6_mask.jpg"
+    # )
 
-    thickness= 0.35
-    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=thickness, dpmm=5.0, n_points=750, kink_factor=0.2)
+    thickness= 0.4
+    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=thickness, dpmm=10.0, n_points=600, kink_factor=0.1, weights_importance=0.5, opacity=1.0)
     solver.start_gui()
     # for i in range(700):
     #     solver.solve_next()

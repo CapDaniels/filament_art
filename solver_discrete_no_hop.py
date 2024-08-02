@@ -101,6 +101,7 @@ class Solver:
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
+        weights_importance: float = 0.5,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
@@ -181,6 +182,7 @@ class Solver:
                 ),
                 anti_aliasing=True,
             ) # type: ignore
+            img_weights = weights_importance * img_weights + ( 1- weights_importance)
             self._img_weights = np.asarray(
                 img_weights, dtype=np.float32
             )  # internal working copy that is rescaled and will be modified
@@ -282,6 +284,7 @@ class Solver:
         best_fval = np.inf
         best_sidx = None
         f = self._build_target_function()
+        # TODO: only do connections which do not exist already
         scores = [f(self.xy_points[self.curr_sidx], self.xy_points[idx]) + self._closeness_penalty(self.s_vals[self.curr_sidx], self.s_vals[idx]) for idx in range(self.n_points) if not idx == self.curr_sidx]
 
         best_sidx = np.argmin(scores)
@@ -374,6 +377,7 @@ class SolverGUI(Solver):
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
+        weights_importance: float = 0.5,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
@@ -385,6 +389,7 @@ class SolverGUI(Solver):
             contour=contour,
             img=img,
             img_weights=img_weights,
+            weights_importance=weights_importance,
             mode=mode,
             dpmm=dpmm,
             line_thickness=line_thickness,
@@ -409,8 +414,11 @@ class SolverGUI(Solver):
         )
         if self._img_weights is not None:
             self.axs[1, 1].imshow(
-                self._img * self._img_weights, cmap="gray"
+                self._img * self._img_weights, cmap="gray", vmin=0, vmax=1
             )
+            # self.axs[1, 1].imshow(
+            #     self._img_weights, cmap="gray", vmin=0, vmax=1
+            # )
 
         # Adjust layout to make room for the button
         self.fig.subplots_adjust(bottom=0.2)
