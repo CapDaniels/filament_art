@@ -105,7 +105,8 @@ class Solver:
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
-        opacity=1.0,
+        opacityd=1.0,
+        opacitys=1.0,
         n_points=200,
         kink_factor=0.25,
     ):
@@ -129,8 +130,11 @@ class Solver:
         self.contour = contour
         self.dpmm = dpmm  # dots per millimeter for the internal computation
         self.mode = mode
-        self.opacity = (
-            opacity  # only used in drawing, but not in finding the best move
+        self.opacityd = (
+            opacityd  # only used in drawing, but not in finding the best move
+        )
+        self.opacitys = (
+            opacitys  # only used in the solver target, but not for drawing
         )
         self.overlap_handling = "kink"  # internal solver setting without user accsess
         self.kink_factor = kink_factor
@@ -205,6 +209,7 @@ class Solver:
         self.curr_sidx = None
         self._solved_first = False
         self.s_connections = []
+        self.sidx_connections = np.full([n_points, n_points], False, dtype=bool)  # adjacency matrix to avoid doubling the strings
         self._img_canvas = np.ones(self._img.shape)  # to draw the resulting image
 
 
@@ -284,23 +289,29 @@ class Solver:
         best_fval = np.inf
         best_sidx = None
         f = self._build_target_function()
-        # TODO: only do connections which do not exist already
-        scores = [f(self.xy_points[self.curr_sidx], self.xy_points[idx]) + self._closeness_penalty(self.s_vals[self.curr_sidx], self.s_vals[idx]) for idx in range(self.n_points) if not idx == self.curr_sidx]
+        # only do connections which do not already exist
+        possible_connections = np.arange(self.n_points, dtype=int)[~np.logical_or(self.sidx_connections[self.curr_sidx, :], self.sidx_connections[:, self.curr_sidx])]
+        scores = [f(self.xy_points[self.curr_sidx], self.xy_points[idx]) + self._closeness_penalty(self.s_vals[self.curr_sidx], self.s_vals[idx]) for idx in possible_connections if not idx == self.curr_sidx]
 
-        best_sidx = np.argmin(scores)
-        best_fval = scores[best_sidx]
+        best_score_idx = np.argmin(scores)
+        best_fval = scores[best_score_idx]
+        best_sidx = possible_connections[best_score_idx]
 
         self.string_count += 1
         print(
             f"adding string {self.string_count:05}: {self.s_vals[self.curr_sidx]:.4f}, {self.s_vals[best_sidx]:.4f}, score: {best_fval:.8f}"
         )
         # draw negative line to remove from target
-        self._update_img(self.curr_sidx, best_sidx, opacity=self.opacity)
+        self._update_img(self.curr_sidx, best_sidx, opacity=self.opacitys)
         old_sidx = self.curr_sidx
         self.curr_sidx = best_sidx
         # pass both for potential future updates
         self.s_connections.append(self.s_vals[self.curr_sidx])
         self.update_img_canvas(old_sidx, self.curr_sidx)
+        if old_sidx < self.curr_sidx:
+            self.sidx_connections[old_sidx, self.curr_sidx] = True
+        else:
+            self.sidx_connections[self.curr_sidx, old_sidx] = True
         return old_sidx, best_sidx
 
     def _solve_first(self):
@@ -315,24 +326,28 @@ class Solver:
 
         best_conn_idx = np.argmin(scores)
         best_fval = scores[best_conn_idx]
-        best_sidxs = possible_connections[best_conn_idx]
+        best_sidxs = list(possible_connections[best_conn_idx])
 
         self.string_count += 1
         print(
             f"adding string {self.string_count:05}: {self.s_vals[best_sidxs[0]]:.4f}, {self.s_vals[best_sidxs[1]]:.4f}, score: {best_fval:.8f}"
         )
         # draw negative line to remove from target
-        self._update_img(*best_sidxs, opacity=self.opacity)
+        self._update_img(*best_sidxs, opacity=self.opacitys)
         self.curr_sidx = best_sidxs[1]
         self._solved_first = True
         self.s_connections.append(self.s_vals[best_sidxs[0]])
         self.s_connections.append(self.s_vals[best_sidxs[1]])
+        if best_sidxs[0] > best_sidxs[1]:
+            best_sidxs[0], best_sidxs[1] = best_sidxs[1],  best_sidxs[0]
+        self.sidx_connections[*best_sidxs,] = True
+
         self.update_img_canvas(*best_sidxs,)
         return *best_sidxs,
 
     def _update_img(self, sidx1, sidx2, opacity=None):
         if opacity is None:
-            opacity = self.opacity
+            opacity = 1.0
         xy1, xy2 = self.xy_points[sidx1], self.xy_points[sidx2]
         x, y, val = wu_line(xy1[0], xy1[1], xy2[0], xy2[1], thickness=self._line_thickness)
         old_px_vals = self._img[x, y]
@@ -352,7 +367,7 @@ class Solver:
 
     def draw_line(self, sidx1, sidx2, img, opacity=None, do_clip=True):
         if opacity is None:
-            opacity = self.opacity
+            opacity = self.opacityd
         xy1, xy2 = self.xy_points[sidx1], self.xy_points[sidx2]
         x, y, val = wu_line(xy1[0], xy1[1], xy2[0], xy2[1], thickness=self._line_thickness)
         new_px_vals = img[x, y] + np.array(val) * opacity
@@ -363,7 +378,7 @@ class Solver:
     
     def update_img_canvas(self, s1, s2):
         self._img_canvas = self.draw_line(
-            s1, s2, self._img_canvas, -self.opacity
+            s1, s2, self._img_canvas, -self.opacityd
         )
     
     @property
@@ -381,7 +396,8 @@ class SolverGUI(Solver):
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
-        opacity=1.0,
+        opacityd=1.0,
+        opacitys=1.0,
         n_points=200,
         kink_factor=0.25,
     ):
@@ -393,7 +409,8 @@ class SolverGUI(Solver):
             mode=mode,
             dpmm=dpmm,
             line_thickness=line_thickness,
-            opacity=opacity,
+            opacityd=opacityd,
+            opacitys=opacitys,
             n_points=n_points,
             kink_factor=kink_factor,
         )

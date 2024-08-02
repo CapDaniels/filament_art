@@ -4,7 +4,7 @@ import warnings
 
 
 class GcodeStringer:
-    def __init__(self, solver: "Solver", gsketch: GSketch, thickness=0.4, z_hop=1., z_base=None, feed_rate=1000.):
+    def __init__(self, solver: "Solver", gsketch: GSketch, thickness=0.4, z_hop=1., z_base=None, feed_rate=1000., ramp_angle=45):
         self.solver = solver
         self.gsketch = gsketch
         self.thickness = thickness
@@ -19,6 +19,7 @@ class GcodeStringer:
             self.z_base = z_base
         self.vf = 600.
         self.hf = feed_rate
+        self.ramp_angle = ramp_angle
 
     def process_Gcode(self):
         s_vals = self.solver.s_connections
@@ -32,7 +33,7 @@ class GcodeStringer:
         G1(z=self.z_base, f=self.vf)
         for s in self.solver.s_connections[1:]:
             xy = self.solver.contour.get_coordinates(s, do_pos_shift=False)
-            GString(self.thickness, x=xy[0], y=xy[1], z_hop=self.z_hop, hf=self.hf, vf=self.vf)
+            GString(self.thickness, x=xy[0], y=xy[1], z_hop=self.z_hop, hf=self.hf, vf=self.vf, ramp_angle=self.ramp_angle)
         GSketch._current_gsketch = prev_gsketch
 
 

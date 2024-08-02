@@ -166,7 +166,7 @@ class GThinStretch(G1):
 
 
 def GString(
-    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, extrude_at_lift=True, vf=600., hf=1000., ramp_angle=45
+    thickness: float, x: float | None = None, y: float | None = None, z_hop=0.4, vf=600., hf=1000., ramp_angle=45
 ):
     if (ramp_angle <= 0) or (ramp_angle > 90):
         raise ValueError("`ramp_angle` must be in teh interval [0, 90]!")
@@ -175,19 +175,6 @@ def GString(
     if z_base is None:
         warnings.warn("No prior z-height found. Defaulting to 0!")
         z_base = 0.0
-    # if not do_ramp:
-    #     if extrude_at_lift:
-    #         GThinStretch(thickness, z=z_base + z_hop, f=vf)
-    #     else:
-    #         G1(z=z_base + z_hop, f=vf)
-    #     GThinStretch(thickness, x=x, y=y, f=hf)
-    #     G1(z=z_base, f=vf)
-    # else:
-
-    # follow a diagonal ramping from connection points
-
-    # TODO: change ramp_factor to angle or distance unit
-    # TODO: maybe lower feedrate on downward ramp?
 
     pos_old = np.array(GSketch.gcgs().get_curr_pos(["X", "Y"]))
     x_new = x or pos_old[0]
