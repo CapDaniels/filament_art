@@ -42,7 +42,7 @@ if __name__ == "__main__":
     from contours import Circle
     circle = Circle((0, 0), 100)
     img = cv2.imread(r".\..\string_art\test_images\4.jpg")
-    solver = Solver(circle, img, line_thickness=0.2, dpmm=1.0, n_points=100)
+    solver = Solver('test', circle, img, line_thickness=0.2, dpmm=1.0, n_points=100)
     for i in range(10):
         solver.solve_next()
     gsketch = GSketch("test_main", nozzle_diameter=0.4, filament_diameter=1.75)

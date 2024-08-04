@@ -1,4 +1,4 @@
-# TODO: weights
+# TODO: create angualr dead zone
 
 import numpy as np
 import numpy.typing as npt
@@ -16,6 +16,7 @@ import pstats
 from gcode import GSketch
 from gcode_builder import GcodeStringer
 import warnings
+from pathlib import Path
 
 
 img_type = cv2.typing.MatLike
@@ -98,6 +99,7 @@ class Solver:
 
     def __init__(
         self,
+        name: str,
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
@@ -125,6 +127,7 @@ class Solver:
         dpmm : float, optional
             Dots per millimeter for internal computation. Default is 12.
         """
+        self.name = name
         line_thickness = float(line_thickness)
         dpmm = float(dpmm)
         self.contour = contour
@@ -384,11 +387,25 @@ class Solver:
     @property
     def image(self):
         return np.clip(np.rint(self._img_canvas*255).astype(int), 0, 255)
+    
+    def save_img(self, filename):
+        cv2.imwrite(filename, self.image)
+    
+    def save_project(self, path=None, n_segments=500, save_stl=True):
+        if path is None:
+            path = f"./{self.name}/"
+        path = Path(path)
+        path.mkdir(exist_ok=True)
+        if save_stl:
+            self.contour.save_model(path=path, n_segments=n_segments)
+        self.save_img(path / "result.png")
+        print("saved:", path / "result.png")
 
 
 class SolverGUI(Solver):
     def __init__(
         self,
+        name:str,
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
@@ -402,6 +419,7 @@ class SolverGUI(Solver):
         kink_factor=0.25,
     ):
         super().__init__(
+            name,
             contour=contour,
             img=img,
             img_weights=img_weights,
@@ -480,7 +498,7 @@ if __name__ == "__main__":
     # img_weights = cv2.imread(
     #     r".\..\string_art\test_images\11_mask.jpg"
     # )
-    solver = SolverGUI(circle, img, img_weights=img_weights, line_thickness=0.2, dpmm=5.0, n_points=500)
+    solver = SolverGUI('test', circle, img, img_weights=img_weights, line_thickness=0.2, dpmm=5.0, n_points=500)
     solver.start_gui()
     print(solver.s_connections)
     # solver.solve_next()
