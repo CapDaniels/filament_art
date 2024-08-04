@@ -1,14 +1,20 @@
+# TODO: solve circular import
+
 from abc import ABC, abstractmethod
 import numpy as np
 import numpy.typing as npt
 from typing import Annotated, TypeVar, Literal
+import model_maker
+from pathlib import Path
 
 DType = TypeVar("DType", bound=np.generic)
 
 
 class Contour(ABC):
-    def __init__(self, name="shape"):
+    def __init__(self, name="shape", width=5.0, height=5.0):
         self.name = name
+        self.width = width  # for the stl
+        self.height = height  # for the stl
 
     def get_coordinates(self, s: float | npt.ArrayLike, do_pos_shift=False):
         s = np.array(s)
@@ -17,7 +23,12 @@ class Contour(ABC):
         return self._get_coordinates(s, do_pos_shift)
 
     @abstractmethod
-    def _get_coordinates(self, s, do_pos_shift) -> Annotated[npt.NDArray[DType], Literal[2, 'N']] | Annotated[npt.NDArray[DType], Literal[2]]:
+    def _get_coordinates(
+        self, s, do_pos_shift
+    ) -> (
+        Annotated[npt.NDArray[DType], Literal[2, "N"]]
+        | Annotated[npt.NDArray[DType], Literal[2]]
+    ):
         pass
 
     @abstractmethod
@@ -30,9 +41,22 @@ class Contour(ABC):
         """
         pass
 
+    def save_model(self, path=None, width=None, height=None, n_segments=500):
+        width = width or self.width
+        height = height or self.height
+        self.stl_saver = model_maker.Stl_maker(lambda s:self.get_coordinates(s, do_pos_shift=False), width, height, n_segments)
+        if path is None:
+            path = self.name + ".stl"
+        else:
+            path = Path(path)
+            if path.suffix == "":
+                path = path / (self.name + ".stl")
+        self.stl_saver.save_stl(path)
+        print("saved:", path)
+
 
 class Circle(Contour):
-    def __init__(self, center, radius, name="cicle"):
+    def __init__(self, center, radius, name="circle"):
         self.center = center
         self.radius = radius
         super().__init__(name)
