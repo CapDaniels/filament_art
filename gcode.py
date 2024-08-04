@@ -92,10 +92,13 @@ class GCode(ABC):
     def getGstring(self):
         g_str = self.command_name
         for c_attr_name, c_attr_val in self.command_attr.items():
-            if c_attr_name == "E":
-                g_str += f" {c_attr_name}{c_attr_val:.5f}"
+            if isinstance(c_attr_val, int):
+                g_str += f" {c_attr_name}{c_attr_val}"
             else:
-                g_str += f" {c_attr_name}{c_attr_val:.3f}"
+                if c_attr_name == "E":
+                    g_str += f" {c_attr_name}{c_attr_val:.5f}"
+                else:
+                    g_str += f" {c_attr_name}{c_attr_val:.3f}"
         return g_str
 
     @property
@@ -127,6 +130,28 @@ class G1(GCode):
         # check if any argument (besides f) is set
         if len(self._command_attr) == 0:
             raise ValueError("You need to define at least any of x, y, z, e or f!")
+
+        super().__init__()
+
+    @property
+    def command_name(self):
+        return self._command_name
+
+    @property
+    def command_attr(self):
+        return self._command_attr
+    
+class Mx(GCode):
+    def __init__(self, m_num:int, **m_vars):
+        for k, v in m_vars.items():
+            if not isinstance(k, str) or len(k) > 1:
+                raise ValueError(f"Invalid variable {k}!")
+            if v is None: v = ""
+            if not isinstance(v, (str, int, float)):
+                raise ValueError(f"Invalid type of parameter {k}! Must be None, str, float or int.")
+
+        self._command_name = f"M{m_num}"
+        self._command_attr = m_vars
 
         super().__init__()
 
