@@ -41,6 +41,7 @@ Don't be scared if the first 2 or 3 stings fail. Some pressure needs to build up
 ## Possible TODOs for future me or collaborators
 
  - fine tune the line solver algorithm
+ - maybe adapt a Radon transformation to find lines faster (this gives me headaches already since you need to solve an analytical form of the line model)
  - add support for other shapes
     - add support to avoid strings over concave areas
     - load paths from `svg` files or other formats
