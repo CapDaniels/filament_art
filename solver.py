@@ -23,6 +23,12 @@ import time
 
 img_type = cv2.typing.MatLike
 
+def normalize(v):
+    v = np.array(v)
+    if v.ndim == 1:
+        return v / np.sqrt(np.sum(np.square(v), axis=-1))
+    return v / np.sqrt(np.sum(np.square(v), axis=-1))[:, np.newaxis]
+
 
 @njit
 def darkness_along_line_aa_njit(
@@ -258,6 +264,15 @@ class Solver:
         if diff > 0.1:
             return 0.0
         return ((0.1 - diff) * 10) ** 2
+    
+    @staticmethod
+    @njit
+    def _angular_penalty(angle):
+        thresh = 0.1
+        angle = angle / np.pi
+        if angle > thresh:
+            return 0.0
+        return ((thresh - angle) * 1/thresh) ** 2
 
     def _build_target_function(self):
         """
@@ -323,12 +338,21 @@ class Solver:
                 self.sidx_connections[:, self.curr_sidx],
             )
         ]
+        possible_connections = possible_connections[self.curr_sidx!=possible_connections]
+        positions = self.contour.get_coordinates(self.s_connections[-2:])
+        prev_pos, curr_pos = np.array(positions).T
+        prev_vec = prev_pos - curr_pos
+        possible_pos = self.contour.get_coordinates(self.s_vals[possible_connections])
+        possible_vecs = (possible_pos.T - curr_pos)
+        angles = np.arccos(np.dot(normalize(prev_vec), normalize(possible_vecs).T))
+
         scores = [
             f(self.xy_points[self.curr_sidx], self.xy_points[idx])
             + self._closeness_penalty(
                 self.s_vals[self.curr_sidx], self.s_vals[idx]
             )
-            for idx in possible_connections
+            + self._angular_penalty(angle)
+            for idx, angle in zip(possible_connections, angles)
             if not idx == self.curr_sidx
         ]
 
@@ -540,7 +564,7 @@ class SolverGUI(Solver):
             button.on_clicked(self._add_frames_to_queue)
             button.ax.set_label(label)
             self._buttons.append(button)
-        button_labels = ["stop"]
+        button_labels = ["clear queue"]
         button_callbacks = [self._clear_queue]
         for i, (label, callback) in enumerate(
             zip(button_labels, button_callbacks)
@@ -598,9 +622,10 @@ if __name__ == "__main__":
         circle,
         img,
         img_weights=img_weights,
-        line_thickness=0.2,
-        dpmm=5.0,
-        n_points=500,
+        line_thickness=0.25,
+        dpmm=10.0,
+        n_points=600,
+        kink_factor=0.1
     )
     solver.start_gui()
     print(solver.s_connections)
