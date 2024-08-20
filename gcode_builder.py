@@ -38,7 +38,7 @@ class GcodeStringer:
 
 
 if __name__ == "__main__":
-    from solver_discrete_no_hop import Solver
+    from solver import Solver
     from contours import Circle
     circle = Circle((0, 0), 100)
     img = cv2.imread(r".\..\string_art\test_images\4.jpg")

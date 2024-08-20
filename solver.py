@@ -1,24 +1,23 @@
 # TODO: create angualr dead zone
 
 import numpy as np
-import numpy.typing as npt
+# import numpy.typing as npt
 from contours import Contour, Circle
 import skimage.transform as transform
 
-# from iminuit import Minuit
 from line_alg import wu_line
 from numba import njit
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
 import itertools
 import cv2
-import cProfile
-import pstats
+# import cProfile
+# import pstats
 from gcode import GSketch
 from gcode_builder import GcodeStringer
 import warnings
 from pathlib import Path
-import time
+# import time
 
 
 img_type = cv2.typing.MatLike
@@ -161,9 +160,11 @@ class Solver:
         scale_x = contour_dx * self.dpmm / img_width
         scale_y = contour_dy * self.dpmm / img_height
         self.img_scale_factor = max(scale_x, scale_y)
+
+        # Resize the image 
         # adding plus one to avoid out of bound in line tracer.
         # In short, image must be one larger than max index
-        img = transform.resize(
+        img = transform.resize(  # Using skimage, since cv2.resize looks bad for upscale
             img,
             (
                 round(img_height * self.img_scale_factor + 1),

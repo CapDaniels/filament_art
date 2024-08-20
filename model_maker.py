@@ -46,10 +46,10 @@ class Stl_maker:
         hw = self.width / 2
         hh = self.height / 2
         return np.array([
-            [0, -hh, -hw],
-            [0, -hh, hw],
-            [0, hh, hw],
-            [0, hh, -hw]
+            [0, -hw, -hh],
+            [0, -hw, hh],
+            [0, hw, hh],
+            [0, hw, -hh]
         ])
 
     @staticmethod
