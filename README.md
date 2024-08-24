@@ -39,7 +39,7 @@ The GUI should walk you thorugh it. But the basic steps are:
 Don't be scared if the first 2 or 3 stings fail. Some pressure needs to build up in the nozzle in order for a consistent stringing to work.
 
 ## Possible TODOs for future me or collaborators
-
+ - refactor the GUI code of the solver
  - fine tune the line solver algorithm
  - maybe adapt a Radon transformation to find lines faster (this gives me headaches already since you need to solve an analytical form of the line model)
  - add support for other shapes

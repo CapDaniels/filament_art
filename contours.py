@@ -56,10 +56,10 @@ class Contour(ABC):
 
 
 class Circle(Contour):
-    def __init__(self, center, radius, name="circle", widht=5.0, height=5.0):
+    def __init__(self, center, radius, name="circle", width=5.0, height=5.0):
         self.center = center
         self.radius = radius
-        super().__init__(name, width=widht, height=height)
+        super().__init__(name, width=width, height=height)
 
     def _get_coordinates(self, s, do_pos_shift):
         if not do_pos_shift:
