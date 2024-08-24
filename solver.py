@@ -1,4 +1,5 @@
-# TODO: create angualr dead zone
+import matplotlib
+matplotlib.use('tkagg')
 
 import numpy as np
 # import numpy.typing as npt
@@ -17,6 +18,7 @@ from gcode import GSketch
 from gcode_builder import GcodeStringer
 import warnings
 from pathlib import Path
+from tkinter import filedialog
 # import time
 
 
@@ -55,10 +57,13 @@ def darkness_along_line_aa_njit(
         The average darkness along the line.
     """
     # modifies Wu's algorithm to get the coordinates of the line
+    # weights here mean the alpha values of the drawn line while img_weights are
+    # the weights of the image mask
     line_x, line_y, weigths = wu_line(x1, y1, x2, y2, thickness)
 
     # Extract pixel values along the line from both images
     mean_darkness = 0.0
+    weight_penalty = 0.0
     if img_weights is not None:
         weights_sum = 0
         for idx, (x, y) in enumerate(zip(line_x, line_y)):
@@ -69,11 +74,14 @@ def darkness_along_line_aa_njit(
             # otherwise we would divide by zero
             return np.inf
 
+        # punish lines that choose only a few "active" pixels
+        weight_penalty = 50 * 1 / weights_sum
+
         # weigths *= img_weights
     for x, y, w in zip(line_x, line_y, weigths):
         mean_darkness += target[x, y] * w
 
-    return mean_darkness / sum(weigths)
+    return mean_darkness / sum(weigths) + weight_penalty
 
 
 class Solver:
@@ -106,20 +114,22 @@ class Solver:
         Returns the starting values for the solver based on the mode.
     """
 
+    _save_path = None
+
     def __init__(
         self,
         name: str,
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
-        weights_importance: float = 0.5,
+        weights_importance: float = 1.0,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
         opacityd=1.0,
         opacitys=1.0,
         n_points=200,
-        kink_factor=0.25,
+        kink_factor=0.25,  # 0.1
     ):
         """
         Initializes the Solver with the given shape, image, mode, and dpmm.
@@ -269,7 +279,14 @@ class Solver:
     @staticmethod
     @njit
     def _angular_penalty(angle):
-        thresh = 0.1
+        """Penalty for angles larger than a threshold.
+        Args:
+            angle (float): The angle in radians between two points.
+        Returns:
+            float: The penalty value. 0 if the angle is greater than the threshold, 
+                   otherwise a penalty proportional to the difference from the threshold.
+        """
+        thresh = 0.075
         angle = angle / np.pi
         if angle > thresh:
             return 0.0
@@ -346,6 +363,8 @@ class Solver:
         possible_pos = self.contour.get_coordinates(self.s_vals[possible_connections])
         possible_vecs = (possible_pos.T - curr_pos)
         angles = np.arccos(np.dot(normalize(prev_vec), normalize(possible_vecs).T))
+
+        _ = f((0,0), (1,1))  # run this once as a njit warmup
 
         scores = [
             f(self.xy_points[self.curr_sidx], self.xy_points[idx])
@@ -482,15 +501,30 @@ class Solver:
         self.save_img(path / "result.png")
         print("saved:", path / "result.png")
 
+    @property
+    def save_path(self):
+        return self._save_path
+
+    def save_and_quit_with_dialog(self, event):
+        self._save_path = Path(filedialog.askdirectory(
+            title="Select a save directory",
+            initialdir="./test_output"
+        )) / self.name
+        self._save_path.mkdir(exist_ok=True)
+        self.save_img(self._save_path / "result.png")
+        plt.close('all') # all open plots are correctly closed after each run
+        self._running = False
+
 
 class SolverGUI(Solver):
+    fast_draw_mode = True
     def __init__(
         self,
         name: str,
         contour: "Contour",
         img: img_type,
         img_weights: img_type | None = None,
-        weights_importance: float = 0.5,
+        weights_importance: float = 1.0,
         mode="greedy_dark",
         dpmm=12.0,
         line_thickness=0.4,
@@ -517,8 +551,9 @@ class SolverGUI(Solver):
         # Create figure and subplots
         # plt.ion()
         self.fig, self.axs = plt.subplots(2, 2, figsize=(10, 8))
-        for i, ax in enumerate(self.axs.flat):
-            ax.set_title(f"Plot {i+1}")
+        titles = ["picture", "solver target", "drawn strings", "mask"]
+        for i, (ax, title) in enumerate(zip(self.axs.flatten(), titles)):
+            ax.set_title(title)
         self.mpl_og_img = self.axs[0, 0].imshow(
             self.img, cmap="gray", vmin=0, vmax=1
         )
@@ -555,7 +590,7 @@ class SolverGUI(Solver):
         )
 
         # Create a button below the subplots
-        button_labels = ["1", "100", "500", "1000"]
+        button_labels = ["1", "50", "300", "600"]
         self._buttons = []
         for i, label in enumerate(button_labels):
             ax_button = plt.axes(
@@ -565,8 +600,8 @@ class SolverGUI(Solver):
             button.on_clicked(self._add_frames_to_queue)
             button.ax.set_label(label)
             self._buttons.append(button)
-        button_labels = ["clear queue"]
-        button_callbacks = [self._clear_queue]
+        button_labels = ["clear queue", "save and quit"]
+        button_callbacks = [self._clear_queue, self.save_and_quit_with_dialog]
         for i, (label, callback) in enumerate(
             zip(button_labels, button_callbacks)
         ):
@@ -581,18 +616,24 @@ class SolverGUI(Solver):
 
     def start_gui(self):
         # plt.ion()
+        # self.fig.canvas.toolbar.pack_forget()
         plt.show(block=False)
         self._running = True
-        self._mainloop()
+        return self._mainloop()
 
     def _mainloop(self):
-        # I know that fig.number exists at runntime, the linter does not. Thus type: ignore
+        """runs mainloop and returns a status variable"""
+        # I know that fig.number exists at runtime, the linter does not. Thus type: ignore
         while self._running and plt.fignum_exists(self.fig.number):  # type: ignore
             if self._framequeue > 0:
+                if not self.fast_draw_mode:
+                    self._update_gui()
+                elif (self.string_count < 10) or (self._framequeue < 20) or (self._framequeue%10)==0:
+                    self._update_gui()
                 self.solve_next()
-                self._update_gui()
                 self._framequeue -= 1
             self.fig.canvas.start_event_loop(0.001)  # this makes the mpl window responsive
+        return (self.string_count > 1) and (self.save_path is not None)
 
     def _add_frames_to_queue(self, event):
         n_frames = int(event.inaxes.get_label())
