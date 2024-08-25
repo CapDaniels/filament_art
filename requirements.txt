@@ -1,6 +1,6 @@
 matplotlib~=3.9.2
 numba~=0.60.0
-numpy~=2.1.0
+numpy~=2.0.1
 numpy-stl~=3.1.2
 opencv-python~=4.10.0.84
 Pillow~=10.4.0
