@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 from gcode_builder import GcodeStringer
 from gcode import GSketch, Mx
+import os
 
 def dict_print(d):
     for k, v in d.items():
@@ -121,7 +122,11 @@ class Tk_Settings:
         )
         # Defining UI elements
         self.root = root
-        self.root.wm_iconbitmap(Path("./benchy.ico").absolute().as_posix())
+        if "nt" == os.name:
+            self.root.wm_iconbitmap(Path("./benchy.ico").absolute().as_posix())
+        else:
+            self.root.wm_iconbitmap(Path("./benchy.xbm").absolute().as_posix())
+
         self.frame = tk.Frame(root)
         self.title_label = tk.Label(
             self.frame, text="Filament Art Settings", font=("Arial", 25)
