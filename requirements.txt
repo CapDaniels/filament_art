@@ -1,8 +1,8 @@
-matplotlib~=3.8.1
-numba~=0.59.1
+matplotlib~=3.9.2
+numba~=0.60.0
 numpy~=2.1.0
-numpy_stl~=3.1.1
-opencv_python~=4.10.0.82
-Pillow~=10.1.0
+numpy-stl~=3.1.2
+opencv-python~=4.10.0.84
+Pillow~=10.4.0
 scipy~=1.14.1
-skimage~=0.23
+scikit-image~=0.0
