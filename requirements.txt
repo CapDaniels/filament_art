@@ -5,4 +5,4 @@ numpy_stl~=3.1.1
 opencv_python~=4.10.0.82
 Pillow~=10.1.0
 scipy~=1.14.1
-skimage~=0.23
+scikit-image~=0.23
