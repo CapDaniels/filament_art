@@ -30,10 +30,24 @@ def normalize(v):
         return v / np.sqrt(np.sum(np.square(v), axis=-1))
     return v / np.sqrt(np.sum(np.square(v), axis=-1))[:, np.newaxis]
 
-
 @njit
+def line_denstiy_penalty_f(x, kink_factor=0.2):
+    """_summary_
+
+    Args:
+        x (density): how many aa-lines are at one pixel
+
+    Returns:
+        float: the penalty value of one pixel
+    """
+
+    if x == 1.0:
+        return 0.
+    return - (x -1) * kink_factor
+
+@njit()
 def darkness_along_line_aa_njit(
-    target, x1, y1, x2, y2, thickness, img_weights=None
+    target, canvas, x1, y1, x2, y2, thickness, img_weights=None
 ):
     """
     Calculate the average darkness along a line in the target image.
@@ -46,6 +60,8 @@ def darkness_along_line_aa_njit(
     -----------
     target : np.ndarray
         The target image in which darkness is measured.
+    convas : np.ndarray
+        The current canvas. Ranges from [1, -inf).
     x1, y1 : int
         The starting coordinates of the line.
     x2, y2 : int
@@ -59,29 +75,41 @@ def darkness_along_line_aa_njit(
     # modifies Wu's algorithm to get the coordinates of the line
     # weights here mean the alpha values of the drawn line while img_weights are
     # the weights of the image mask
-    line_x, line_y, weigths = wu_line(x1, y1, x2, y2, thickness)
+    line_x, line_y, aa_vals = wu_line(x1, y1, x2, y2, thickness)
 
-    # Extract pixel values along the line from both images
-    mean_darkness = 0.0
+    # if len(line_x) == 0:
+    #     return np.inf
+
+    # can be thought of as the remaining darkness along the line
+    # this is a minimization problem, so lower is better
+    score = 0.0  
     weight_penalty = 0.0
+    line_denstiy_penalty = 0.0
+    weights = aa_vals.copy()
     if img_weights is not None:
-        weights_sum = 0
+        img_weights_sum = 0.0
         for idx, (x, y) in enumerate(zip(line_x, line_y)):
             w = img_weights[x, y]
-            weights_sum += w
-            weigths[idx] *= w
-        if weights_sum == 0:
+            img_weights_sum += w
+            weights[idx] *= w
+        if img_weights_sum == 0.0:
             # otherwise we would divide by zero
             return np.inf
 
         # punish lines that choose only a few "active" pixels
-        weight_penalty = 50 * 1 / weights_sum
+        # unused for now
+        weight_penalty = 25 * 1 / img_weights_sum
 
         # weigths *= img_weights
-    for x, y, w in zip(line_x, line_y, weigths):
-        mean_darkness += target[x, y] * w
+    for x, y, w in zip(line_x, line_y, weights):
+        score += target[x, y] * w
+        line_denstiy_penalty += line_denstiy_penalty_f(canvas[x, y])
 
-    return mean_darkness / sum(weigths) + weight_penalty
+    weights_sum = sum(weights)
+    if weights_sum == 0.0:
+        return np.inf
+
+    return score / (sum(weights)) + line_denstiy_penalty / len(line_x) + weight_penalty
 
 
 class Solver:
@@ -162,7 +190,8 @@ class Solver:
             "kink"  # internal solver setting without user accsess
         )
         self.kink_factor = kink_factor
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if img.ndim > 2:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.img = np.asarray(img, dtype=np.float32) / 255
         contour_dx, contour_dy = self.contour.get_extension()  # in mm
         img_height, img_width = img.shape
@@ -189,7 +218,7 @@ class Solver:
         self._line_thickness = line_thickness * dpmm
         if self._line_thickness < 1.0:
             warnings.warn(
-                f"Your DPI is low for the selected thickness. A value above {1/line_thickness:.2f} is adviced."
+                f"Your DPI is low for the selected thickness. A value above {1/(line_thickness+0.0001):.2f} is adviced."
             )
         self._border_padding = int(np.ceil(self._line_thickness / 2)) + 1
         self._img = cv2.copyMakeBorder(
@@ -233,7 +262,6 @@ class Solver:
         else:
             self.img_weights = None
             self._img_weights = None
-        self._img_line_count = self._img.copy()
         self.string_count = 0
         self.n_points = n_points
         self.s_vals = np.linspace(0.0, 1.0, n_points + 1, endpoint=False)
@@ -318,6 +346,7 @@ class Solver:
                     # squared increase from 0 to 1 for values of abs(s2-s1)<0.1
                     error = darkness_along_line_aa_njit(
                         self._img,
+                        self._img_canvas,
                         xy1[0],
                         xy1[1],
                         xy2[0],
@@ -447,24 +476,9 @@ class Solver:
         )
         old_px_vals = self._img[x, y]
         add_px_vals = np.array(val) * opacity
-        match self.overlap_handling:
-            case "clip":
-                new_px_vals = np.clip(old_px_vals + add_px_vals, None, 1.0)
-                self._img[x, y] = new_px_vals
-            case "linear":
-                new_px_vals = old_px_vals + add_px_vals
-                self._img[x, y] = new_px_vals
-            case "kink":
 
-                def func(x):
-                    return np.where(
-                        x < 1.0,
-                        x,
-                        (1 - self.kink_factor) + x * self.kink_factor,
-                    )
-
-                self._img_line_count[x, y] += add_px_vals
-                self._img[x, y] = func(self._img_line_count[x, y])
+        new_px_vals = np.clip(old_px_vals + add_px_vals, None, 1.0)
+        self._img[x, y] = new_px_vals
 
     def draw_line(self, sidx1, sidx2, img, opacity=None, do_clip=True):
         if opacity is None:
@@ -481,7 +495,7 @@ class Solver:
 
     def update_img_canvas(self, s1, s2):
         self._img_canvas = self.draw_line(
-            s1, s2, self._img_canvas, -self.opacityd
+            s1, s2, self._img_canvas, -self.opacityd, do_clip=False
         )
 
     @property
@@ -616,7 +630,7 @@ class SolverGUI(Solver):
 
     def start_gui(self):
         # plt.ion()
-        # self.fig.canvas.toolbar.pack_forget()
+        self.fig.canvas.toolbar.pack_forget()
         plt.show(block=False)
         self._running = True
         return self._mainloop()

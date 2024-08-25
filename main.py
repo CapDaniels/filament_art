@@ -95,16 +95,21 @@ def load_image(filename=None, display_wrnbox=True, bw=False, size=None):
 
 
 class Tk_Settings:
-    default_input_path = "./test_images/willie.png"
-    default_mask_path = "./test_images/willie_mask.png"
+    default_input_path = "./test_images/benchy.png"
+    default_mask_path = ""
     no_img_text = "No file loaded."
-    default_project_name = "willie"
+    default_project_name = "benchy"
     default_img_display_size = 300
     default_print_vol_x = 220
     default_print_vol_y = 220
+    default_n_points = 600
+    default_internal_dpmm = 10.
     _settings = {}
 
     def __init__(self, root):
+        # status variable that can be acessed to test,
+        # if the window was closed as expected
+        self.normal_quit = False  
         row_tracker = 0
         # loading default image
         self.input_image_path, self.input_image = load_image(
@@ -116,6 +121,7 @@ class Tk_Settings:
         )
         # Defining UI elements
         self.root = root
+        self.root.wm_iconbitmap("./benchy.ico")
         self.frame = tk.Frame(root)
         self.title_label = tk.Label(
             self.frame, text="Filament Art Settings", font=("Arial", 25)
@@ -259,7 +265,7 @@ class Tk_Settings:
             row=row_tracker, column=0
         )
         self.var_n_points = tk.IntVar(name="var_n_points")
-        self.var_n_points.set(200)
+        self.var_n_points.set(self.default_n_points)
         self.n_points_spinbox = tk.Spinbox(
             self.frame,
             from_=10,
@@ -274,7 +280,7 @@ class Tk_Settings:
             self.frame, text="Set internal resolution (dots per mm):"
         ).grid(row=row_tracker, column=0)
         self.var_internal_dpmm = tk.Variable(name="var_internal_dpmm")
-        self.var_internal_dpmm.set(5.0)
+        self.var_internal_dpmm.set(self.default_internal_dpmm)
         self.internal_dpmm_spinbox = tk.Spinbox(
             self.frame,
             from_=1.0,
@@ -462,6 +468,7 @@ class Tk_Settings:
         dict_print(self._settings)
         print()
         if destroy_window:
+            self.normal_quit = True
             self.root.destroy()
 
     @property
@@ -491,19 +498,29 @@ def main():
 
     tk_root.mainloop()
 
+    if not tk_settings.normal_quit:
+        exit()
+
     settings = tk_settings.settings
     tk_root.quit()
     print(settings)
 
     contour = create_contour(settings)
     _, img = load_image(settings["input_image_path"])
-    img = np.array(img)[:, :, 2::-1]  # convert to cv2 format
+    img = np.array(img)
+    if img.ndim > 2:
+        if img.shape[-1] == 2:
+            img = img[:, :, 0] # convert to cv2 format
+        else:
+            img = img[:, :, 2::-1] # convert to cv2 format
     _img = cv2.imread(settings["input_image_path"])
-    mask = (
-        np.array(load_image(settings["mask_image_path"])[1])[:, :, 2::-1]
-        if settings["mask_image_path"] is not None
-        else None
-    )
+    mask =None
+    if settings["mask_image_path"] is not None:
+        mask = (
+            np.array(load_image(settings["mask_image_path"])[1])
+        )
+        if mask.ndim > 2:
+            mask = mask[:, :, 2::-1] # convert to cv2 format
     solver = SolverGUI(
         name=settings["project_name"],
         contour=contour,
