@@ -16,14 +16,18 @@ def rfpart(x):
 
 @njit
 def profile(x, thickness):
-    # return x
-    # return np.clip(min((thickness/2) - np.abs(x) + 1, 1), 0.0, 1.0)
-    x = min((thickness/2) - abs(x) + 1, 1)
+    x = min((thickness/2) - abs(x) + 0.5, 1)
     if x > 1.0:
         return 1.0
     elif x < 0.0:
         return 0.0
     return x
+
+# @njit
+# def profile(x, thickness):
+#     if abs(x) - ((thickness+1)/2) < 0.0:
+#         return 1.0
+#     return 0.0
 
 @njit
 def wu_line(x0:float, y0:float, x1:float, y1:float, thickness:float):
