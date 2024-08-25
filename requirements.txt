@@ -1,8 +1,8 @@
-iminuit>=2.28.0
-matplotlib>=3.8.1
-numba>=0.59.1
-numpy>=2.1.0
-numpy_stl>=3.1.1
-opencv_python>=4.10.0.82
-scipy>=1.14.0
-skimage>=0.0
+matplotlib~=3.8.1
+numba~=0.59.1
+numpy~=2.1.0
+numpy_stl~=3.1.1
+opencv_python~=4.10.0.82
+Pillow~=10.1.0
+scipy~=1.14.1
+skimage~=0.23
