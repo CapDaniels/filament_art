@@ -22,7 +22,7 @@ For a quick start:
 ```
 git clone https://github.com/CapDaniels/filament_art.git
 cd filament_art
-pip install --user -r requirements.txt
+pip install -r requirements.txt
 python main.py
 ```
 
