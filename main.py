@@ -125,7 +125,9 @@ class Tk_Settings:
         if "nt" == os.name:
             self.root.wm_iconbitmap(Path("./benchy.ico").absolute().as_posix())
         else:
-            self.root.wm_iconphoto(Path("./benchy.xbm").absolute().as_posix())
+            _im = Image.open(Path("./benchy.ico").absolute().as_posix())
+            _photo = ImageTk.PhotoImage(_im)
+            self.root.wm_iconphoto(True, _photo)
 
         self.frame = tk.Frame(root)
         self.title_label = tk.Label(
