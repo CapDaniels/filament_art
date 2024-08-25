@@ -121,7 +121,7 @@ class Tk_Settings:
         )
         # Defining UI elements
         self.root = root
-        self.root.wm_iconbitmap("./benchy.ico")
+        self.root.wm_iconbitmap(Path("./benchy.ico").absolute().as_posix())
         self.frame = tk.Frame(root)
         self.title_label = tk.Label(
             self.frame, text="Filament Art Settings", font=("Arial", 25)
