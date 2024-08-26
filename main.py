@@ -291,10 +291,10 @@ class Tk_Settings:
         if self.mask_image is not None:
             if self.input_image_shape != self.mask_image_shape:
                 messagebox.showinfo(
-                "Info",
-                "Mask image must have the same size as the input image!",
-            )
-            return False
+                    "Info",
+                    "Mask image must have the same size as the input image!",
+                )
+                return False
             
         # some sanity checks:
         nzzldia = float(self.var_nzzdia.get())

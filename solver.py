@@ -521,7 +521,7 @@ class Solver:
 
     def save_and_quit_with_dialog(self, event):
         self._save_path = Path(filedialog.askdirectory(
-            title="Select a save directory",
+            title="Select a save directory!",
             initialdir="./test_output"
         )) / self.name
         self._save_path.mkdir(exist_ok=True)
@@ -563,11 +563,7 @@ class SolverGUI(Solver):
         )
         # 1 = black
         # Create figure and subplots
-        # plt.ion()
         self.fig, self.axs = plt.subplots(2, 2, figsize=(10, 8))
-        titles = ["picture", "solver target", "drawn strings", "mask"]
-        for i, (ax, title) in enumerate(zip(self.axs.flatten(), titles)):
-            ax.set_title(title)
         self.mpl_og_img = self.axs[0, 0].imshow(
             self.img, cmap="gray", vmin=0, vmax=1
         )
@@ -577,16 +573,22 @@ class SolverGUI(Solver):
         self.mpl_img_canvas = self.axs[1, 0].imshow(
             self._img_canvas, cmap="gray", vmin=0, vmax=1
         )
+        titles = ["picture", "solver target", "drawn strings"]
         if self._img_weights is not None:
             self.axs[1, 1].imshow(
                 self._img * self._img_weights, cmap="gray", vmin=0, vmax=1
             )
+            titles.append("mask")
             # self.axs[1, 1].imshow(
             #     self._img_weights, cmap="gray", vmin=0, vmax=1
             # )
+        else:
+            self.axs[1, 1].axis('off')
+        for i, (ax, title) in enumerate(zip(self.axs.flatten(), titles)):
+            ax.set_title(title)
 
         # Adjust layout to make room for the button
-        self.fig.subplots_adjust(top=0.9)
+        self.fig.subplots_adjust(top=0.88)
         self.fig.subplots_adjust(bottom=0.2)
 
         # Adding status text
@@ -594,11 +596,12 @@ class SolverGUI(Solver):
         self.ax_text.set_axis_off()
         self.status_string = "{n_finished:04d} strings drawn. {n_queue:04d} strings in the queue. Last score: {score:.4f}."
         self.ax_text_text = self.ax_text.text(
-            0.95,
-            0.01,
-            self.status_string.format(n_finished=0, n_queue=0, score=0),
+            0.5,
+            -0.3,
+            "Click on any number to add the respective number of strings to your artwork!\nClearing the queue interrupts the drawing process.",
+            # self.status_string.format(n_finished=0, n_queue=0, score=0),
             verticalalignment="bottom",
-            horizontalalignment="right",
+            horizontalalignment="center",
             transform=self.ax_text.transAxes,
             fontsize=14,
         )
@@ -640,16 +643,18 @@ class SolverGUI(Solver):
         # I know that fig.number exists at runtime, the linter does not. Thus type: ignore
         while self._running and plt.fignum_exists(self.fig.number):  # type: ignore
             if self._framequeue > 0:
+                self.solve_next()
                 if not self.fast_draw_mode:
                     self._update_gui()
                 elif (self.string_count < 10) or (self._framequeue < 20) or (self._framequeue%10)==0:
                     self._update_gui()
-                self.solve_next()
                 self._framequeue -= 1
             self.fig.canvas.start_event_loop(0.001)  # this makes the mpl window responsive
         return (self.string_count > 1) and (self.save_path is not None)
 
     def _add_frames_to_queue(self, event):
+        if self._framequeue == 0:
+            self._update_gui("Solving the first string... This may take a while!")
         n_frames = int(event.inaxes.get_label())
         self._framequeue += n_frames
 
@@ -657,10 +662,11 @@ class SolverGUI(Solver):
         self._framequeue = 0
         self._update_gui()
 
-    def _update_gui(self):
+    def _update_gui(self, status_string = None):
+        status_string = status_string or self.status_string.format(n_finished=self.string_count, n_queue=self._framequeue, score=self.curr_score)
         self.mpl_img_canvas.set_data(self._img_canvas)
         self.mpl_img.set_data(self._img)
-        self.ax_text_text.set_text(self.status_string.format(n_finished=self.string_count, n_queue=self._framequeue, score=self.curr_score))
+        self.ax_text_text.set_text(status_string)
         # self.fig.canvas.draw()
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
