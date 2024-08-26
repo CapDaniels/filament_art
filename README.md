@@ -26,6 +26,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
+
+https://github.com/user-attachments/assets/0e59fa27-3f05-474c-a926-14b005c2c8af
+
+
+
 ## Workflow
 
 The GUI should walk you through it. But the basic steps are:
@@ -38,6 +43,18 @@ The GUI should walk you through it. But the basic steps are:
  - You start the print and hope for the best.
 
 Don't be scared if the first 2 or 3 stings fail. Some pressure needs to build up in the nozzle for a consistent stringing to work.
+
+
+https://github.com/user-attachments/assets/4de4c532-8dc8-4f34-b0b3-20b09f28532c
+
+
+
+https://github.com/user-attachments/assets/59a6ff2f-c013-4797-ac39-212bff807dee
+
+
+
+https://github.com/user-attachments/assets/a09fe47d-b449-409f-8226-c20f7ee0e064
+
 
 ## Possible TODOs for future me or collaborators
  - add settings for fan speed and nozzle temperature (for now fixed at full speed and 200°C)
