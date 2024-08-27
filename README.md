@@ -10,9 +10,18 @@ This is a passion project of mine, inspired by [this video](https://www.youtube.
 The original idea is to recreate any image from a long (black) string, which is wrapped around nails in a round frame.
 This WIP project provides an algorithm that takes any image and returns how a string must be wrapped around points on a frame to recreate the picture. Note that this is only a very loose adaptation of the algorithm presented in the linked video.
 
+![cover_pic2](https://github.com/user-attachments/assets/888d391f-5d76-4015-9f1d-f669a0949f43)
+
+
 But now for the fun part. This project uses a 3D printer to print the frame first and then the actual strings that compose the picture.
 This is achieved by producing a custom GCode that stretches filament across the frame to produce thin strings, similar to how the filament is extruded during its production.
-From some initial trials, this seems to work surprisingly well.
+From some initial trials, this works surprisingly well.
+
+
+
+https://github.com/user-attachments/assets/7acb1173-989e-41d9-8b20-0cde091ceebe
+
+
 
 ## Installation and Requirements
 
