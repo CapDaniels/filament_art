@@ -1,7 +1,9 @@
 import matplotlib
-matplotlib.use('tkagg')
+
+matplotlib.use("tkagg")
 
 import numpy as np
+
 # import numpy.typing as npt
 from contours import Contour, Circle
 import skimage.transform as transform
@@ -9,9 +11,9 @@ import skimage.transform as transform
 from line_alg import wu_line
 from numba import njit
 import matplotlib.pyplot as plt
-import matplotlib.widgets as widgets
 import itertools
 import cv2
+
 # import cProfile
 # import pstats
 from gcode import GSketch
@@ -19,10 +21,12 @@ from gcode_builder import GcodeStringer
 import warnings
 from pathlib import Path
 from tkinter import filedialog
+
 # import time
 
 
 img_type = cv2.typing.MatLike
+
 
 def normalize(v):
     v = np.array(v)
@@ -30,8 +34,9 @@ def normalize(v):
         return v / np.sqrt(np.sum(np.square(v), axis=-1))
     return v / np.sqrt(np.sum(np.square(v), axis=-1))[:, np.newaxis]
 
+
 @njit
-def line_denstiy_penalty_f(x, kink_factor=0.2):
+def line_overlap_penalty_f(x, overlap_penalty=0.2):
     """_summary_
 
     Args:
@@ -42,12 +47,21 @@ def line_denstiy_penalty_f(x, kink_factor=0.2):
     """
 
     if x == 1.0:
-        return 0.
-    return - (x -1) * kink_factor
+        return 0.0
+    return -(x - 1) * overlap_penalty
+
 
 @njit()
 def darkness_along_line_aa_njit(
-    target, canvas, x1, y1, x2, y2, thickness, img_weights=None
+    target,
+    canvas,
+    x1,
+    y1,
+    x2,
+    y2,
+    thickness,
+    overlap_penalty=0.2,
+    img_weights=None,
 ):
     """
     Calculate the average darkness along a line in the target image.
@@ -82,7 +96,7 @@ def darkness_along_line_aa_njit(
 
     # can be thought of as the remaining darkness along the line
     # this is a minimization problem, so lower is better
-    score = 0.0  
+    score = 0.0
     weight_penalty = 0.0
     line_denstiy_penalty = 0.0
     weights = aa_vals.copy()
@@ -103,13 +117,19 @@ def darkness_along_line_aa_njit(
         # weigths *= img_weights
     for x, y, w in zip(line_x, line_y, weights):
         score += target[x, y] * w
-        line_denstiy_penalty += line_denstiy_penalty_f(canvas[x, y])
+        line_denstiy_penalty += line_overlap_penalty_f(
+            canvas[x, y], overlap_penalty
+        )
 
     weights_sum = sum(weights)
     if weights_sum == 0.0:
         return np.inf
 
-    return score / (sum(weights)) + line_denstiy_penalty / len(line_x) + weight_penalty
+    return (
+        score / (sum(weights))
+        + line_denstiy_penalty / len(line_x)
+        + weight_penalty
+    )
 
 
 class Solver:
@@ -152,142 +172,182 @@ class Solver:
         img_weights: img_type | None = None,
         weights_importance: float = 1.0,
         mode="greedy_dark",
-        dpmm=12.0,
-        line_thickness=0.4,
-        opacityd=1.0,
-        opacitys=1.0,
-        n_points=200,
-        kink_factor=0.25,  # 0.1
+        dpmm: float = 10.0,
+        line_thickness: float = 0.4,
+        opacityd: float = 1.0,
+        opacitys: float = 1.0,
+        n_points: int = 600,
+        overlap_penalty: float = 0.25,  # 0.1
     ):
         """
         Initializes the Solver with the given shape, image, mode, and dpmm.
 
         Parameters:
         -----------
-        shape : Contour
+        name : str
+            The name of the Solver.
+        contour : Contour
             The contour shape of the 2D perimeter. Only concave shapes are
             supported!
         img : np.ndarray
             The input image.
+        img_weights : np.ndarray, optional
+            Weights for the image mask. If provided, will be used to optimize
+            the sting placement.
+        weights_importance : float, optional
+            Importance of weights in the optimization process. Default is 1.0.
         mode : str, optional
-            The mode of the solver. Default is "greedy_dark".
+            The mode of the solver. Supported modes are only "greedy_dark" for
+            now. Default is "greedy_dark".
         dpmm : float, optional
-            Dots per millimeter for internal computation. Default is 12.
+            Dots per millimeter for internal computation. Default is 10.0.
+        line_thickness : float, optional
+            Thickness of the sting lines. Default is 0.4.
+        opacityd : float, optional
+            Opacity of the dark parts of the sting. Default is 1.0.
+        opacitys : float, optional
+            Opacity of the light parts of the sting. Default is 1.0.
+        n_points : int, optional
+            Number of sting placement points along the contour. Default is 600.
+        overlap_penalty : float, optional
+            Penalty factor for overlapping stings. Higher values penalize more
+            overlaps, resulting in lower local string densitys. Default is 0.25.
         """
         self.name = name
-        line_thickness = float(line_thickness)
-        dpmm = float(dpmm)
         self.contour = contour
         self.dpmm = dpmm  # dots per millimeter for the internal computation
         self.mode = mode
-        self.opacityd = (
-            opacityd  # only used in drawing, but not in finding the best move
-        )
-        self.opacitys = (
-            opacitys  # only used in the solver target, but not for drawing
-        )
-        self.overlap_handling = (
-            "kink"  # internal solver setting without user accsess
-        )
-        self.kink_factor = kink_factor
-        if img.ndim > 2:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        self.img = np.asarray(img, dtype=np.float32) / 255
-        contour_dx, contour_dy = self.contour.get_extension()  # in mm
-        img_height, img_width = img.shape
-        # the scaling needs some testing
-        scale_x = contour_dx * self.dpmm / img_width
-        scale_y = contour_dy * self.dpmm / img_height
-        self.img_scale_factor = max(scale_x, scale_y)
-
-        # Resize the image 
-        # adding plus one to avoid out of bound in line tracer.
-        # In short, image must be one larger than max index
-        img = transform.resize(  # Using skimage, since cv2.resize looks bad for upscale
-            img,
-            (
-                round(img_height * self.img_scale_factor + 1),
-                round(img_width * self.img_scale_factor + 1),
-            ),
-            anti_aliasing=True,
-        )  # type: ignore
-        self._img = np.asarray(
-            img, dtype=np.float32
-        )  # internal working copy that is rescaled and will be modified
+        self.overlap_penalty = overlap_penalty
+        # drawing opaticity for the resulting image
+        # affects the penalty of crossing lines
+        self.opacityd = opacityd
+        # solver opaticity, used when updating the solver target image
+        self.opacitys = opacitys
+        self.n_points = n_points
+        self.string_count = 0
+        self.curr_score = 0
+        self.n_points = n_points
         # line thickness in dots for internal use
         self._line_thickness = line_thickness * dpmm
+        self.border_padding = int(np.ceil(self._line_thickness / 2)) + 1
+
+        # TODO: push this as a messagebox to main GUI
         if self._line_thickness < 1.0:
             warnings.warn(
                 f"Your DPI is low for the selected thickness. A value above {1/(line_thickness+0.0001):.2f} is adviced."
             )
-        self._border_padding = int(np.ceil(self._line_thickness / 2)) + 1
-        self._img = cv2.copyMakeBorder(
-            self._img,
-            self._border_padding,
-            self._border_padding,
-            self._border_padding,
-            self._border_padding,
+
+        self._init_adjacency_matrix()
+        self._init_image(img)
+        self._init_image_weights(img_weights, weights_importance)
+
+        self._output_canvas = np.ones(
+            self._img_solver_target.shape
+        )  # to draw the resulting image
+
+    def _prepare_img(self, img):
+        if img.ndim > 2:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return np.asarray(img, dtype=np.float32) / 255
+
+    def _add_border_padding(self, img: img_type, padd: int | None = None):
+        if padd is None:
+            padd = self.border_padding
+        return cv2.copyMakeBorder(
+            img,
+            padd,
+            padd,
+            padd,
+            padd,
             cv2.BORDER_REFLECT,
         )
-        if img_weights is not None:
-            img_weights = cv2.cvtColor(img_weights, cv2.COLOR_BGR2GRAY)
-            self.img_weights = np.asarray(img_weights, dtype=np.float32) / 255
-            imgw_height, imgw_width = img_weights.shape
-            if (img_height != imgw_height) or (img_width != imgw_width):
-                raise ValueError(
-                    "Image and weight image must have the same size!"
-                )
-            img_weights = transform.resize(
-                img_weights,
-                (
-                    round(img_height * self.img_scale_factor + 1),
-                    round(img_width * self.img_scale_factor + 1),
-                ),
-                anti_aliasing=True,
-            )  # type: ignore
-            img_weights = weights_importance * img_weights + (
-                1 - weights_importance
-            )
-            self._img_weights = np.asarray(
-                img_weights, dtype=np.float32
-            )  # internal working copy that is rescaled and will be modified
-            self._img_weights = cv2.copyMakeBorder(
-                self._img_weights,
-                self._border_padding,
-                self._border_padding,
-                self._border_padding,
-                self._border_padding,
-                cv2.BORDER_REFLECT,
-            )
-        else:
-            self.img_weights = None
-            self._img_weights = None
-        self.string_count = 0
-        self.n_points = n_points
-        self.s_vals = np.linspace(0.0, 1.0, n_points + 1, endpoint=False)
+
+    def _init_adjacency_matrix(self):
+        """
+        Initializes an adjacency matrix for the given number of points and
+        calculates the coordinates corresponding to each point along the
+        contour.
+
+        Returns:
+            None
+        """
+        self.s_vals = np.linspace(0.0, 1.0, self.n_points + 1, endpoint=False)
         self.xy_points = np.array(
             [self._get_coordinates(s) for s in self.s_vals]
         )
         self.curr_sidx = None
         self._solved_first = False
         self.s_connections = []
-        self.sidx_connections = np.full(
-            [n_points, n_points], False, dtype=bool
-        )  # adjacency matrix to avoid doubling the strings
-        self._img_canvas = np.ones(
-            self._img.shape
-        )  # to draw the resulting image
+        # adjacency matrix to avoid doubling the strings
+        self.adjacency_matrix = np.full(
+            [self.n_points, self.n_points], False, dtype=bool
+        )
 
-        self.curr_score = 0
+    def _init_image(self, img):
+        self.img = self._prepare_img(img)
+
+        contour_dx, contour_dy = self.contour.get_extension()  # in mm
+        self.og_img_height, self.og_img_width = self.img.shape
+
+        scale_x = contour_dx * self.dpmm / self.og_img_width
+        scale_y = contour_dy * self.dpmm / self.og_img_height
+        self.img_scale_factor = max(scale_x, scale_y)
+
+        # Resize the image
+        # adding plus one to avoid out of bound in line tracer.
+        # In short, image must be one larger than max index
+        # Using skimage, since cv2.resize looks bad for upscale
+        img = transform.resize(
+            self.img,
+            (
+                round(self.og_img_height * self.img_scale_factor + 1),
+                round(self.og_img_width * self.img_scale_factor + 1),
+            ),
+            anti_aliasing=True,
+        )  # type: ignore
+
+        # internal working copy that is rescaled and will be modified
+        _img_solver_target = np.asarray(img, dtype=np.float32)
+
+        # more padding, depending on the line thickness
+        # otherwise out of bound error in line tracer
+        # future versions could inplement this by discarding oob values
+        # in the solver.
+        self._img_solver_target = self._add_border_padding(_img_solver_target)
+
+    def _init_image_weights(self, img_weights, weights_importance=1.0):
+        if img_weights is None:
+            self.img_weights = None
+            self._img_solver_weights = None
+            return
+        img_weights = self._prepare_img(img_weights)
+        imgw_height, imgw_width = img_weights.shape
+        if (self.og_img_height != imgw_height) or (
+            self.og_img_width != imgw_width
+        ):
+            raise ValueError("Image and weight image must have the same size!")
+        img_weights = transform.resize(
+            img_weights,
+            (
+                round(self.og_img_height * self.img_scale_factor + 1),
+                round(self.og_img_width * self.img_scale_factor + 1),
+            ),
+            anti_aliasing=True,
+        )  # type: ignore
+        img_weights = weights_importance * img_weights + (
+            1 - weights_importance
+        )
+        # internal working copy that is rescaled and will be modified
+        _img_solver_weights = np.asarray(img_weights, dtype=np.float32)
+        self._img_solver_weights = self._add_border_padding(
+            _img_solver_weights
+        )
 
     def _get_coordinates(self, s1):
         # getting the shifted corrdinates, so that the min is [0, 0]
         x1, y1 = self.contour.get_coordinates(s1, do_pos_shift=True)
-        # x2, y2 = self.contour.get_coordinates(s2, do_pos_shift=True)
-        x1 = x1 * self.dpmm + self._border_padding
-        y1 = y1 * self.dpmm + self._border_padding
-        # x2 = x2 * self.dpmm + self._border_padding
-        # y2 = y2 * self.dpmm + self._border_padding
+        x1 = x1 * self.dpmm + self.border_padding
+        y1 = y1 * self.dpmm + self.border_padding
         return (x1, y1)
 
     @staticmethod
@@ -303,7 +363,7 @@ class Solver:
         if diff > 0.1:
             return 0.0
         return ((0.1 - diff) * 10) ** 2
-    
+
     @staticmethod
     @njit
     def _angular_penalty(angle):
@@ -311,14 +371,14 @@ class Solver:
         Args:
             angle (float): The angle in radians between two points.
         Returns:
-            float: The penalty value. 0 if the angle is greater than the threshold, 
+            float: The penalty value. 0 if the angle is greater than the threshold,
                    otherwise a penalty proportional to the difference from the threshold.
         """
         thresh = 0.075
         angle = angle / np.pi
         if angle > thresh:
             return 0.0
-        return ((thresh - angle) * 1/thresh) ** 2
+        return ((thresh - angle) * 1 / thresh) ** 2
 
     def _build_target_function(self):
         """
@@ -345,14 +405,15 @@ class Solver:
                     # penalty term, if the distance is too small
                     # squared increase from 0 to 1 for values of abs(s2-s1)<0.1
                     error = darkness_along_line_aa_njit(
-                        self._img,
-                        self._img_canvas,
+                        self._img_solver_target,
+                        self._output_canvas,
                         xy1[0],
                         xy1[1],
                         xy2[0],
                         xy2[1],
                         self._line_thickness,
-                        self._img_weights,
+                        self.overlap_penalty,
+                        self._img_solver_weights,
                     )
                     return error
 
@@ -381,19 +442,25 @@ class Solver:
         # only do connections which do not already exist
         possible_connections = np.arange(self.n_points, dtype=int)[
             ~np.logical_or(
-                self.sidx_connections[self.curr_sidx, :],
-                self.sidx_connections[:, self.curr_sidx],
+                self.adjacency_matrix[self.curr_sidx, :],
+                self.adjacency_matrix[:, self.curr_sidx],
             )
         ]
-        possible_connections = possible_connections[self.curr_sidx!=possible_connections]
+        possible_connections = possible_connections[
+            self.curr_sidx != possible_connections
+        ]
         positions = self.contour.get_coordinates(self.s_connections[-2:])
         prev_pos, curr_pos = np.array(positions).T
         prev_vec = prev_pos - curr_pos
-        possible_pos = self.contour.get_coordinates(self.s_vals[possible_connections])
-        possible_vecs = (possible_pos.T - curr_pos)
-        angles = np.arccos(np.dot(normalize(prev_vec), normalize(possible_vecs).T))
+        possible_pos = self.contour.get_coordinates(
+            self.s_vals[possible_connections]
+        )
+        possible_vecs = possible_pos.T - curr_pos
+        angles = np.arccos(
+            np.dot(normalize(prev_vec), normalize(possible_vecs).T)
+        )
 
-        _ = f((0,0), (1,1))  # run this once as a njit warmup
+        _ = f((0, 0), (1, 1))  # run this once as a njit warmup
 
         scores = [
             f(self.xy_points[self.curr_sidx], self.xy_points[idx])
@@ -419,11 +486,11 @@ class Solver:
         self.curr_sidx = best_sidx
         # pass both for potential future updates
         self.s_connections.append(self.s_vals[self.curr_sidx])
-        self.update_img_canvas(old_sidx, self.curr_sidx)
+        self._update_output_canvas(old_sidx, self.curr_sidx)
         if old_sidx < self.curr_sidx:
-            self.sidx_connections[old_sidx, self.curr_sidx] = True
+            self.adjacency_matrix[old_sidx, self.curr_sidx] = True
         else:
-            self.sidx_connections[self.curr_sidx, old_sidx] = True
+            self.adjacency_matrix[self.curr_sidx, old_sidx] = True
         self.curr_score = best_fval
         return old_sidx, best_sidx
 
@@ -459,28 +526,15 @@ class Solver:
         self.s_connections.append(self.s_vals[best_sidxs[1]])
         if best_sidxs[0] > best_sidxs[1]:
             best_sidxs[0], best_sidxs[1] = best_sidxs[1], best_sidxs[0]
-        self.sidx_connections[*best_sidxs,] = True
+        self.adjacency_matrix[*best_sidxs,] = True
 
-        self.update_img_canvas(
+        self._update_output_canvas(
             *best_sidxs,
         )
         self.curr_score = best_fval
         return (*best_sidxs,)
 
-    def _update_img(self, sidx1, sidx2, opacity=None):
-        if opacity is None:
-            opacity = 1.0
-        xy1, xy2 = self.xy_points[sidx1], self.xy_points[sidx2]
-        x, y, val = wu_line(
-            xy1[0], xy1[1], xy2[0], xy2[1], thickness=self._line_thickness
-        )
-        old_px_vals = self._img[x, y]
-        add_px_vals = np.array(val) * opacity
-
-        new_px_vals = np.clip(old_px_vals + add_px_vals, None, 1.0)
-        self._img[x, y] = new_px_vals
-
-    def draw_line(self, sidx1, sidx2, img, opacity=None, do_clip=True):
+    def _draw_line(self, sidx1, sidx2, img, opacity=None, do_clip=True):
         if opacity is None:
             opacity = self.opacityd
         xy1, xy2 = self.xy_points[sidx1], self.xy_points[sidx2]
@@ -493,14 +547,27 @@ class Solver:
         img[x, y] = new_px_vals
         return img
 
-    def update_img_canvas(self, s1, s2):
-        self._img_canvas = self.draw_line(
-            s1, s2, self._img_canvas, -self.opacityd, do_clip=False
+    def _update_img(self, sidx1, sidx2, opacity=None):
+        if opacity is None:
+            opacity = 1.0
+        xy1, xy2 = self.xy_points[sidx1], self.xy_points[sidx2]
+        x, y, val = wu_line(
+            xy1[0], xy1[1], xy2[0], xy2[1], thickness=self._line_thickness
+        )
+        old_px_vals = self._img_solver_target[x, y]
+        add_px_vals = np.array(val) * opacity
+
+        new_px_vals = np.clip(old_px_vals + add_px_vals, None, 1.0)
+        self._img_solver_target[x, y] = new_px_vals
+
+    def _update_output_canvas(self, s1, s2):
+        self._output_canvas = self._draw_line(
+            s1, s2, self._output_canvas, -self.opacityd, do_clip=False
         )
 
     @property
     def image(self):
-        return np.clip(np.rint(self._img_canvas * 255).astype(int), 0, 255)
+        return np.clip(np.rint(self._output_canvas * 255).astype(int), 0, 255)
 
     def save_img(self, filename):
         cv2.imwrite(filename, self.image)
@@ -520,184 +587,20 @@ class Solver:
         return self._save_path
 
     def save_and_quit_with_dialog(self, event):
-        self._save_path = Path(filedialog.askdirectory(
-            title="Select a save directory!",
-            initialdir="./test_output"
-        )) / self.name
+        self._save_path = (
+            Path(
+                filedialog.askdirectory(
+                    title="Select a save directory!",
+                    initialdir="./test_output",
+                )
+            )
+            / self.name
+        )
         self._save_path.mkdir(exist_ok=True)
         self.save_img(self._save_path / "result.png")
-        plt.close('all') # all open plots are correctly closed after each run
+        plt.close("all")  # all open plots are correctly closed after each run
         self._running = False
 
 
-class SolverGUI(Solver):
-    fast_draw_mode = True
-    def __init__(
-        self,
-        name: str,
-        contour: "Contour",
-        img: img_type,
-        img_weights: img_type | None = None,
-        weights_importance: float = 1.0,
-        mode="greedy_dark",
-        dpmm=12.0,
-        line_thickness=0.4,
-        opacityd=1.0,
-        opacitys=1.0,
-        n_points=200,
-        kink_factor=0.25,
-    ):
-        super().__init__(
-            name,
-            contour=contour,
-            img=img,
-            img_weights=img_weights,
-            weights_importance=weights_importance,
-            mode=mode,
-            dpmm=dpmm,
-            line_thickness=line_thickness,
-            opacityd=opacityd,
-            opacitys=opacitys,
-            n_points=n_points,
-            kink_factor=kink_factor,
-        )
-        # 1 = black
-        # Create figure and subplots
-        self.fig, self.axs = plt.subplots(2, 2, figsize=(10, 8))
-        self.mpl_og_img = self.axs[0, 0].imshow(
-            self.img, cmap="gray", vmin=0, vmax=1
-        )
-        self.mpl_img = self.axs[0, 1].imshow(
-            self._img, cmap="gray", vmin=0, vmax=1
-        )
-        self.mpl_img_canvas = self.axs[1, 0].imshow(
-            self._img_canvas, cmap="gray", vmin=0, vmax=1
-        )
-        titles = ["picture", "solver target", "drawn strings"]
-        if self._img_weights is not None:
-            self.axs[1, 1].imshow(
-                self._img * self._img_weights, cmap="gray", vmin=0, vmax=1
-            )
-            titles.append("mask")
-            # self.axs[1, 1].imshow(
-            #     self._img_weights, cmap="gray", vmin=0, vmax=1
-            # )
-        else:
-            self.axs[1, 1].axis('off')
-        for i, (ax, title) in enumerate(zip(self.axs.flatten(), titles)):
-            ax.set_title(title)
-
-        # Adjust layout to make room for the button
-        self.fig.subplots_adjust(top=0.88)
-        self.fig.subplots_adjust(bottom=0.2)
-
-        # Adding status text
-        self.ax_text = plt.axes((0.1, 0.95, 0.8, 0.05))
-        self.ax_text.set_axis_off()
-        self.status_string = "{n_finished:04d} strings drawn. {n_queue:04d} strings in the queue. Last score: {score:.4f}."
-        self.ax_text_text = self.ax_text.text(
-            0.5,
-            -0.3,
-            "Click on any number to add the respective number of strings to your artwork!\nClearing the queue interrupts the drawing process.",
-            # self.status_string.format(n_finished=0, n_queue=0, score=0),
-            verticalalignment="bottom",
-            horizontalalignment="center",
-            transform=self.ax_text.transAxes,
-            fontsize=14,
-        )
-
-        # Create a button below the subplots
-        button_labels = ["1", "50", "300", "600"]
-        self._buttons = []
-        for i, label in enumerate(button_labels):
-            ax_button = plt.axes(
-                (0.1 + i * 0.2, 0.1, 0.15, 0.05)
-            )  # [left, bottom, width, height]
-            button = widgets.Button(ax_button, label)
-            button.on_clicked(self._add_frames_to_queue)
-            button.ax.set_label(label)
-            self._buttons.append(button)
-        button_labels = ["clear queue", "save and quit"]
-        button_callbacks = [self._clear_queue, self.save_and_quit_with_dialog]
-        for i, (label, callback) in enumerate(
-            zip(button_labels, button_callbacks)
-        ):
-            ax_button = plt.axes(
-                (0.1 + i * 0.2, 0.02, 0.15, 0.05)
-            )  # [left, bottom, width, height]
-            button = widgets.Button(ax_button, label)
-            button.on_clicked(callback)
-            button.ax.set_label(label)
-            self._buttons.append(button)
-        self._framequeue = 0
-
-    def start_gui(self):
-        # plt.ion()
-        self.fig.canvas.toolbar.pack_forget()
-        plt.show(block=False)
-        self._running = True
-        return self._mainloop()
-
-    def _mainloop(self):
-        """runs mainloop and returns a status variable"""
-        # I know that fig.number exists at runtime, the linter does not. Thus type: ignore
-        while self._running and plt.fignum_exists(self.fig.number):  # type: ignore
-            if self._framequeue > 0:
-                self.solve_next()
-                if not self.fast_draw_mode:
-                    self._update_gui()
-                elif (self.string_count < 10) or (self._framequeue < 20) or (self._framequeue%10)==0:
-                    self._update_gui()
-                self._framequeue -= 1
-            self.fig.canvas.start_event_loop(0.001)  # this makes the mpl window responsive
-        return (self.string_count > 1) and (self.save_path is not None)
-
-    def _add_frames_to_queue(self, event):
-        if self._framequeue == 0:
-            self._update_gui("Solving the first string... This may take a while!")
-        n_frames = int(event.inaxes.get_label())
-        self._framequeue += n_frames
-
-    def _clear_queue(self, event):
-        self._framequeue = 0
-        self._update_gui()
-
-    def _update_gui(self, status_string = None):
-        status_string = status_string or self.status_string.format(n_finished=self.string_count, n_queue=self._framequeue, score=self.curr_score)
-        self.mpl_img_canvas.set_data(self._img_canvas)
-        self.mpl_img.set_data(self._img)
-        self.ax_text_text.set_text(status_string)
-        # self.fig.canvas.draw()
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
-
-
 if __name__ == "__main__":
-    circle = Circle((0, 0), 100)
-    img = cv2.imread(r".\..\string_art\test_images\Snoopy_Peanuts.png")
-    img_weights = None
-    # img_weights = cv2.imread(
-    #     r".\..\string_art\test_images\11_mask.jpg"
-    # )
-    solver = SolverGUI(
-        "test",
-        circle,
-        img,
-        img_weights=img_weights,
-        line_thickness=0.25,
-        dpmm=10.0,
-        n_points=600,
-        kink_factor=0.1
-    )
-    solver.start_gui()
-    print(solver.s_connections)
-    # solver.solve_next()
-    # cProfile.run("solver.solve_next()", 'restats')
-    # p = pstats.Stats('restats')
-    # # p.strip_dirs().sort_stats(-1).print_stats()
-    # p.sort_stats('cumulative').print_stats(100)
-    # p.print_stats()
-    gsketch = GSketch("test_main", nozzle_diameter=0.4, filament_diameter=1.75)
-    gcode_stringer = GcodeStringer(solver, gsketch)
-    gcode_stringer.process_Gcode()
-    print(gsketch.get_GCode())
+    pass

@@ -36,10 +36,12 @@ def wu_line(x0:float, y0:float, x1:float, y1:float, thickness:float):
     Args:
         x0, y0 (float): line start
         x1, y1 (float): line end
-        thickness (float): thickness of the line in dots (1 recovers the default Wu line algorithm)
+        thickness (float): thickness of the line in dots (1 recovers the default
+        Wu line algorithm)
 
     Returns:
-        (list[float], list[float], list[float]): list of x-pixels, y-pixles in the line and value of the pixels 
+        (list[float], list[float], list[float]): list of x-pixels, y-pixles in
+        the line and value of the pixels 
     """
     thickness -= 1
     xlist, ylist, vallist = [], [], []
@@ -69,7 +71,8 @@ def wu_line(x0:float, y0:float, x1:float, y1:float, thickness:float):
     if steep:
         for y in range(-ihalf_thickness, ihalf_thickness + 2):
             if y <= 0:
-                # doing this explicitly and not with a function to enable numba support
+                # doing this explicitly and not with a function to enable numba
+                # support
                 xlist.append(ypxl1 + y)
                 ylist.append(xpxl1)
                 vallist.append(profile(-y + fpart(yend), thickness) * xgap)
