@@ -5,12 +5,11 @@ from pathlib import Path
 import re
 from utils import load_image, nicer_dict_print
 import tkinter as tk
-from typing import Callable
-from tkinter import filedialog, messagebox
-from solver import Solver, img_type
-from contours import Contour
+from tkinter import messagebox
+from solver import Solver
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
+from typing import Tuple
 
 
 class Tk_Settings_GUI:
@@ -378,37 +377,21 @@ class Tk_Settings_GUI:
 
 
 class Solver_GUI(Solver):
-    fast_draw_mode = True
-
     def __init__(
         self,
-        name: str,
-        contour: "Contour",
-        img: img_type,
-        img_weights: img_type | None = None,
-        weights_importance: float = 1.0,
-        mode="greedy_dark",
-        dpmm=12.0,
-        line_thickness=0.4,
-        opacityd=1.0,
-        opacitys=1.0,
-        n_points=200,
-        kink_factor=0.25,
+        fast_draw_mode = True,
+        **solver_kwargs
     ):
         super().__init__(
-            name,
-            contour=contour,
-            img=img,
-            img_weights=img_weights,
-            weights_importance=weights_importance,
-            mode=mode,
-            dpmm=dpmm,
-            line_thickness=line_thickness,
-            opacityd=opacityd,
-            opacitys=opacitys,
-            n_points=n_points,
-            overlap_penalty=kink_factor,
+            **solver_kwargs
         )
+        self.fast_draw_mode = fast_draw_mode
+
+        self._init_figures()
+        self._init_gui_text()
+        self._init_buttons()
+
+    def _init_figures(self):
         # 1 = black
         # Create figure and subplots
         self.fig, self.axs = plt.subplots(2, 2, figsize=(10, 8))
@@ -438,6 +421,7 @@ class Solver_GUI(Solver):
         for i, (ax, title) in enumerate(zip(self.axs.flatten(), titles)):
             ax.set_title(title)
 
+    def _init_gui_text(self):
         # Adjust layout to make room for the button
         self.fig.subplots_adjust(top=0.88)
         self.fig.subplots_adjust(bottom=0.2)
@@ -456,13 +440,15 @@ class Solver_GUI(Solver):
             fontsize=14,
         )
 
+    def _init_buttons(self, button_vals: None | Tuple[int, int, int, int] = None):
         # Create a button below the subplots
-        button_labels = ["1", "50", "300", "600"]
+        if button_vals is None:
+            button_labels = [1, 50, 300, 600]
+        button_labels = [str(i) for i in button_labels]
         self._buttons = []
         for i, label in enumerate(button_labels):
-            ax_button = plt.axes(
-                (0.1 + i * 0.2, 0.1, 0.15, 0.05)
-            )  # [left, bottom, width, height]
+            # [left, bottom, width, height]
+            ax_button = plt.axes((0.1 + i * 0.2, 0.1, 0.15, 0.05))  
             button = widgets.Button(ax_button, label)
             button.on_clicked(self._add_frames_to_queue)
             button.ax.set_label(label)
@@ -472,9 +458,8 @@ class Solver_GUI(Solver):
         for i, (label, callback) in enumerate(
             zip(button_labels, button_callbacks)
         ):
-            ax_button = plt.axes(
-                (0.1 + i * 0.2, 0.02, 0.15, 0.05)
-            )  # [left, bottom, width, height]
+            # [left, bottom, width, height]
+            ax_button = plt.axes((0.1 + i * 0.2, 0.02, 0.15, 0.05))  
             button = widgets.Button(ax_button, label)
             button.on_clicked(callback)
             button.ax.set_label(label)
@@ -482,8 +467,7 @@ class Solver_GUI(Solver):
         self._framequeue = 0
 
     def start_gui(self):
-        # plt.ion()
-        self.fig.canvas.toolbar.pack_forget()
+        self.fig.canvas.toolbar.pack_forget()  # type: ignore (removes toolbar)
         plt.show(block=False)
         self._running = True
         return self._mainloop()

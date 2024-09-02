@@ -1,5 +1,4 @@
 import matplotlib
-
 matplotlib.use("tkagg")
 
 import numpy as np
@@ -131,35 +130,10 @@ def darkness_along_line_aa_njit(
         + weight_penalty
     )
 
-
 class Solver:
     """
     A class to solve the sting placement optimization problem using various
-    modes.
-
-    Attributes:
-    -----------
-    shape : Contour
-        The contour shape of the 2D perimeter.
-    img : np.ndarray
-        The input image, will be extended to a square and converted to
-        grayscale.
-    mode : str
-        The mode of the solver. Default is "greedy_dark".
-    dpmm : float
-        Dots per millimeter for internal computation. Default is 12.
-
-    Methods:
-    --------
-    __init__(self, shape, img, mode="greedy_dark", dpmm=12):
-        Initializes the Solver with the given shape, image, mode, and dpmm.
-
-    _build_target_function(self):
-        Builds and returns the target function for minimization based on the
-        solver's mode.
-
-    s0(self):
-        Returns the starting values for the solver based on the mode.
+    modes. (Of which I've implemented one so far...)
     """
 
     _save_path = None
