@@ -43,14 +43,14 @@ class Tk_Settings_GUI:
         self.input_image_path, self.input_image, self.input_image_shape = (
             load_image(
                 self.default_input_path,
-                display_wrnbox=False,
+                display_warnbox=False,
                 size=self.default_img_display_size,
             )
         )
         self.mask_image_path, self.mask_image, self.mask_image_shape = (
             load_image(
                 self.default_mask_path,
-                display_wrnbox=False,
+                display_warnbox=False,
                 size=self.default_img_display_size,
             )
         )
@@ -399,7 +399,7 @@ class Solver_GUI(Solver):
             self.img, cmap="gray", vmin=0, vmax=1
         )
         self.mpl_img = self.axs[0, 1].imshow(
-            self._img_solver_target, cmap="gray", vmin=0, vmax=1
+            self._error_img, cmap="gray", vmin=0, vmax=1
         )
         self.mpl_img_canvas = self.axs[1, 0].imshow(
             self._output_canvas, cmap="gray", vmin=0, vmax=1
@@ -407,7 +407,7 @@ class Solver_GUI(Solver):
         titles = ["picture", "solver target", "drawn strings"]
         if self._img_solver_weights is not None:
             self.axs[1, 1].imshow(
-                self._img_solver_target * self._img_solver_weights,
+                self._error_img * self._img_solver_weights,
                 cmap="gray",
                 vmin=0,
                 vmax=1,
@@ -512,7 +512,7 @@ class Solver_GUI(Solver):
             score=self.curr_score,
         )
         self.mpl_img_canvas.set_data(self._output_canvas)
-        self.mpl_img.set_data(self._img_solver_target)
+        self.mpl_img.set_data(self._error_img)
         self.ax_text_text.set_text(status_string)
         # self.fig.canvas.draw()
         self.fig.canvas.draw_idle()

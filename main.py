@@ -7,8 +7,13 @@ from gcode import GSketch, Mx
 from gui import Tk_Settings_GUI, Solver_GUI
 from utils import load_image
 
+""" the main file is still very messy. This is partly due to missing GUI
+    features, which are hardcoded here for now!
+"""
+
 def create_contour(settings):
-    """Creates a contour object from the given settings."""
+    """Creates a contour object from the given settings.
+    Only temporary untill contour selection is working in the UI"""
     # manually doing this here for now...
     contour_settings = {
         "center": (
@@ -40,7 +45,6 @@ def main():
             img = img[:, :, 0]  # convert to cv2 format
         else:
             img = img[:, :, 2::-1]  # convert to cv2 format
-    _img = cv2.imread(settings["input_image_path"])
     mask = None
     if settings["mask_image_path"] is not None:
         mask = np.array(load_image(settings["mask_image_path"])[1])
@@ -79,7 +83,6 @@ def main():
         ramp_angle=15,
     )
     gcode_stringer.process_Gcode()
-    # print(gsketch.get_GCode())
     gsketch.save_GCode(solver.save_path / "strings.gcode")
 
 

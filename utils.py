@@ -8,13 +8,13 @@ def nicer_dict_print(d):
         print(k, "=", v)
 
 
-def load_image(filename=None, display_wrnbox=True, bw=False, size=None):
+def load_image(filename=None, display_warnbox=True, bw=False, size=None):
     """Loads an image from file, crops it and optioanlly resizes it.
 
     Args:
         filename (str, optional): The path to the image file. If None, a file
             dialog will be opened.
-        display_wrnbox (bool, optional): Whether to display warning messages in
+        display_warnbox (bool, optional): Whether to display warning messages in
             case of errors. Defaults to True.
         bw (bool, optional): Whether to convert the image to grayscale (black
             and white). Defaults to False.
@@ -23,7 +23,7 @@ def load_image(filename=None, display_wrnbox=True, bw=False, size=None):
 
     Returns:
         tuple: A tuple containing the filename, the loaded PIL image object and
-        the orignale shape, or None, None, (None, None) if an error occurs.
+        the orignale shape, or (None, None, (None, None)) if an error occurs.
     """
     if filename is None:
         filename = filedialog.askopenfilename(
@@ -38,41 +38,42 @@ def load_image(filename=None, display_wrnbox=True, bw=False, size=None):
     if filename:
         filename = Path(filename)
         if not (filename.exists() and filename.is_file()):
-            if display_wrnbox:
+            if display_warnbox:
                 messagebox.showerror("The file does not exist!")
             return None, None, (None, None)
 
         try:
             image = Image.open(filename)
-            if bw:
-                image = image.convert("L")
-
-            width, height = image.size
-            crop_left, crop_right = 0, width
-            crop_top, crop_bottom = 0, height
-
-            # Crop the image to a square based on the smallest dimension
-            if width > height:
-                crop_left = (width - height) // 2
-                crop_right = int(width + height) // 2
-            else:
-                crop_top = (height - width) // 2
-                crop_bottom = (height + width) // 2
-
-            cropped_image = image.crop(
-                (crop_left, crop_top, crop_right, crop_bottom)
-            )
-
-            if size is not None:
-                cropped_image = cropped_image.resize((size, size))
-
-            return filename, cropped_image, (width, height)
-
         except IOError:
-            if display_wrnbox:
+            if display_warnbox:
                 messagebox.showerror(
                     "Something went wrong while loading the image!"
                 )
             return None, None, (None, None)
+
+        if bw:
+            image = image.convert("L")
+
+        width, height = image.size
+        crop_left, crop_right = 0, width
+        crop_top, crop_bottom = 0, height
+
+        # Crop the image to a square based on the smallest dimension
+        if width > height:
+            crop_left = (width - height) // 2
+            crop_right = int(width + height) // 2
+        else:
+            crop_top = (height - width) // 2
+            crop_bottom = (height + width) // 2
+
+        cropped_image = image.crop(
+            (crop_left, crop_top, crop_right, crop_bottom)
+        )
+
+        if size is not None:
+            cropped_image = cropped_image.resize((size, size))
+
+        return filename, cropped_image, (width, height)
+
 
     return None, None, (None, None)
