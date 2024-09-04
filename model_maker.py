@@ -32,7 +32,7 @@ class Stl_maker:
 #     return np.array([np.cos(s*2*np.pi), np.sin(s*2*np.pi), 0])  # Example: A sine wave path
 
     def _generate_path_points(self):
-        s_values = np.linspace(0, 1, self.n_segments)
+        s_values = np.linspace(0, 1, self.n_segments, endpoint=False)
         if len(self.path_func(0)) == 3:
             self.path_points = np.array([self.path_func(s) for s in s_values])
         elif len(self.path_func(0)) == 2:
@@ -133,8 +133,8 @@ class Stl_maker:
         for i, face in enumerate(self.faces):
             for j in range(3):
                 self.model.vectors[i][j] = self.vertices[face[j], :]
-        # if not self.model.is_closed(exact=True):
-        #     raise ValueError("Model not closed, aborting!")
+        if not self.model.is_closed(exact=True):
+            raise ValueError("Model not closed, aborting!")
         
     def save_stl(self, filename):
         if self.model is None:
@@ -168,21 +168,5 @@ class Stl_maker:
 
 
 if __name__ == "__main__":
-
-    width = 5  # Width of the rectangular cross-section
-    height = 5  # Height of the rectangular cross-section
-
-    from contours import Circle
-    circle = Circle([110,110], 100)
-    stl_maker = Stl_maker(circle, width=width, height=height)
-    stl_maker.create_model()
-    stl_maker.display_model()
-
-    # def custom_contour(s):
-    #     return np.array([np.sin(s*2*np.pi), np.cos(s*2*np.pi), np.sin(s*4*np.pi)]) * 100
-
-    # stl_maker = Stl_maker(custom_contour, width=width, height=height, n_segments=101)
-    # stl_maker.create_model()
-    # stl_maker.display_model()
-    # stl_maker.save_stl("3dstl_test.stl")
+    pass
 
